@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+ollama
+python-dotenv
+mcp>=2.3,<3
+bcrypt

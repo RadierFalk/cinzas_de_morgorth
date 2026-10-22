@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cinzas de Morvath</title>
+<style>
+  :root { --ouro: #c9a227; --texto: #d8cfb8; --fundo: #07080b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fundo); color: var(--texto); font-family: Georgia, serif; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+  h1 { font-weight: normal; letter-spacing: 6px; color: var(--ouro); margin: 0 0 4px; text-align: center; }
+  .sub { color: #8a8270; font-style: italic; margin: 0 0 24px; text-align: center; }
+  input, button { font: inherit; padding: 10px 14px; background: #111318; color: var(--texto); border: 1px solid #3a3528; }
+  button { cursor: pointer; letter-spacing: 2px; }
+  button:hover { border-color: var(--ouro); color: var(--ouro); }
+  .hidden { display: none !important; }
+
+  #login { display: grid; gap: 10px; width: min(320px, 100%); }
+  #login .linha { display: flex; gap: 10px; }
+  #login .linha button { flex: 1; }
+  #erro { color: #b33; min-height: 20px; margin: 0; font-size: 14px; }
+
+  #area { width: min(960px, 100%); }
+  .topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; color: #8a8270; }
+  .topo button { padding: 4px 10px; font-size: 12px; }
+  .palco { position: relative; }
+  canvas { width: 100%; aspect-ratio: 16 / 9; display: block; background: #000; outline: none; }
+
+  /* Painel entre lutas */
+  #painel { position: absolute; inset: 0; background: rgba(5,5,8,0.88); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 24px; gap: 14px; }
+  #painel .pensando { font-style: italic; color: #8a8270; animation: pulsar 1.6s infinite; }
+  @keyframes pulsar { 50% { opacity: 0.4; } }
+  .fala { font-size: clamp(16px, 2.4vw, 22px); font-style: italic; max-width: 680px; color: #efe4c8; }
+  .dica { border: 1px solid #3a3528; padding: 8px 16px; color: var(--ouro); font-size: 15px; }
+  .dica::before { content: "✦ Mensagem no chão: "; color: #8a8270; }
+  .mudancas { font-family: system-ui, sans-serif; font-size: 13px; color: #9a927e; max-width: 640px; line-height: 1.6; }
+  .mudancas b { color: #e0b85a; font-weight: 600; }
+  .ferramentas { font-family: monospace; font-size: 12px; color: #6f6a5d; }
+  #voltar { color: #6f6a5d; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>CINZAS DE MORVATH</h1>
+  <p class="sub">O guardião aprende com cada uma de suas mortes.</p>
+
+  <form id="login">
+    <input id="usuario" placeholder="Nome" autocomplete="username">
+    <input id="senha" type="password" placeholder="Senha" autocomplete="current-password">
+    <p id="erro"></p>
+    <div class="linha">
+      <button data-acao="entrar">Entrar</button>
+      <button data-acao="registrar">Novo jogo</button>
+    </div>
+  </form>
+
+  <div id="area" class="hidden">
+    <div class="topo">
+      <span id="info"></span>
+      <button id="sair">Sair</button>
+    </div>
+    <div class="palco">
+      <canvas id="tela" width="960" height="540" tabindex="0"></canvas>
+      <div id="painel" class="hidden"></div>
+    </div>
+  </div>
+
+<script type="module">
+import { iniciarLuta, iniciarFase, carregarSprites } from "/static/jogo.js";
+
+const $ = (id) => document.getElementById(id);
+let estado = null;  // estratégia atual, fala, placar, fogueira
+let acaoDoBotao = null;  // o que o botão principal do painel (e o Enter) faz
+const sprites = carregarSprites();  // começa a baixar as imagens já no login
+
+async function api(caminho, corpo) {
+  const res = await fetch(caminho, corpo === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo),
+  });
+  const dados = await res.json();
+  if (!res.ok) throw new Error(dados.detail);
+  return dados;
+}
+
+function atualizarInfo() {
+  $("info").textContent = `${estado.usuario} · mortes: ${estado.mortes} · vitórias: ${estado.vitorias}`;
+}
+
+async function abrirJogo() {
+  estado = await api("/api/estado");
+  $("login").classList.add("hidden");
+  $("area").classList.remove("hidden");
+  atualizarInfo();
+  mostrarPainel(`<p class="pensando">Carregando...</p>`);
+  await sprites;
+  telaInicial();
+}
+
+function telaInicial() {
+  if (estado.fogueira_boss) {
+    // Fogueira já acesa: começa direto no chefão
+    mostrarPainel(`<p class="fala">“${esc(estado.fala)}”</p>
+      <button id="acao">Enfrentar Morvath</button>
+      <a href="#" id="voltar">recomeçar pelas ruínas</a>`, lutarBoss);
+  } else {
+    mostrarPainel(`<p class="fala">Atravesse as Ruínas de Morvath. Acenda a fogueira antes da névoa:
+      é ali que você voltará a cada morte.</p><button id="acao">Começar</button>`, jogarFase);
+  }
+}
+
+function jogarFase() {
+  $("painel").classList.add("hidden");
+  iniciarFase({
+    fogueiraAcesa: estado.fogueira_boss,
+    aoMorrer: () => mostrarPainel(`<p class="fala">As ruínas reclamam mais uma alma.</p>
+      <button id="acao">Tentar novamente</button>`, jogarFase),
+    aoAcenderFogueira: () => { estado.fogueira_boss = true; api("/api/fogueira", {}).catch(() => {}); },
+    aoChegarNoBoss: lutarBoss,
+  });
+}
+
+function lutarBoss() {
+  $("painel").classList.add("hidden");
+  iniciarLuta(estado.estrategia, estado.fala, aoFimDaLuta);
+}
+
+async function aoFimDaLuta(log) {
+  mostrarPainel(`<p class="pensando">${log.resultado === "morte"
+    ? "Morvath reflete sobre a sua queda..." : "Das cinzas, Morvath se reergue, e se lembra..."}</p>`);
+  const antes = estado.estrategia;
+  try {
+    const r = await api("/api/luta", log);
+    estado = { ...estado, estrategia: r.estrategia, fala: r.fala, mortes: r.mortes, vitorias: r.vitorias };
+    atualizarInfo();
+    mostrarPainel(`
+      <p class="fala">“${esc(r.fala)}”</p>
+      <p class="dica">${esc(r.dica)}</p>
+      <div class="mudancas">${descreverMudancas(antes, r.estrategia)}</div>
+      ${r.ferramentas.length ? `<p class="ferramentas">ferramentas usadas pela IA: ${r.ferramentas.join(" → ")}</p>` : ""}
+      ${r.erro ? `<p class="ferramentas">a IA falhou (${esc(r.erro).slice(0, 120)}); o boss mantém a estratégia</p>` : ""}
+      <button id="acao">${log.resultado === "morte" ? "Tentar novamente" : "Enfrentar de novo"}</button>`, lutarBoss);
+  } catch (err) {
+    mostrarPainel(`<p class="fala">${esc(err.message)}</p><button id="acao">Tentar novamente</button>`, lutarBoss);
+  }
+}
+
+// Mostra em português o que a IA mudou no boss
+function descreverMudancas(a, n) {
+  const pct = (v) => Math.round(v * 100) + "%";
+  const rolagem = { nenhuma: "não", para_tras: "persegue quem rola para trás", para_frente: "pune quem rola por dentro" };
+  const itens = [
+    ["Agressividade", pct(a.agressividade), pct(n.agressividade)],
+    ["Atraso do 3º golpe", pct(a.atraso_terceiro_golpe), pct(n.atraso_terceiro_golpe)],
+    ["Pune cura", a.punir_cura ? "sim" : "não", n.punir_cura ? "sim" : "não"],
+    ["Pune esquiva", rolagem[a.punir_rolagem], rolagem[n.punir_rolagem]],
+    ["Combo / Investida / Salto", fmtPesos(a.pesos), fmtPesos(n.pesos)],
+  ];
+  const mudou = itens.filter(([, x, y]) => x !== y).map(([nome, x, y]) => `${nome}: ${x} → <b>${y}</b>`);
+  const motivo = n.motivo ? `<br><i>“${esc(n.motivo)}”</i>` : "";
+  return mudou.length ? "O guardião se adaptou:<br>" + mudou.join("<br>") + motivo : "O guardião manteve a estratégia.";
+}
+const fmtPesos = (p) => `${p.combo} / ${p.investida} / ${p.salto}`;
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+function mostrarPainel(html, acao = null) {
+  $("painel").innerHTML = html;
+  $("painel").classList.remove("hidden");
+  acaoDoBotao = acao;
+  if (acao) $("acao").onclick = acao;
+  if ($("voltar")) $("voltar").onclick = (e) => { e.preventDefault(); jogarFase(); };
+}
+
+// Enter também aciona o botão principal quando o painel está aberto
+addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !$("painel").classList.contains("hidden") && acaoDoBotao) acaoDoBotao();
+});
+
+$("login").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/" + e.submitter.dataset.acao, { usuario: $("usuario").value, senha: $("senha").value });
+    abrirJogo();
+  } catch (err) { $("erro").textContent = err.message; }
+};
+
+$("sair").onclick = async () => { await api("/api/sair", {}); location.reload(); };
+
+abrirJogo().catch(() => {});  // se já estiver logado, vai direto ao jogo
+</script>
+</body>
+</html>
