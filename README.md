@@ -21,6 +21,9 @@ e escreve a fala do chefe e uma dica.
 - Cada fase tem uma **fogueira no meio** (morrer depois de acendê-la recomeça dali, nesta sessão) e uma
   **no fim**, que salva o progresso no servidor. A névoa leva à próxima cena.
 - Vencer um chefe libera a cena seguinte. Morrer para um chefe recomeça a luta (com o chefe já adaptado).
+- As fases têm **escadarias, rampas, torres com escada de mão, planaltos, pontes e abismos** (cair é morte).
+- Criaturas (diabretes, lobos sombrios, demônios rubros) **surgem do chão** quando você chega perto, e
+  o ArchDemon **voa** e atira esferas sombrias.
 
 ## Controles
 
@@ -28,11 +31,42 @@ e escreve a fala do chefe e uma dica.
 |---|---|
 | A / D (ou setas) | mover |
 | W / Espaço | pular (plataformas, ondas de choque, olhar da górgona, flechas) |
+| W / S perto de uma escada | subir / descer a escada de mão (Espaço solta) |
 | S / ↓ | descer da plataforma |
 | Shift (ou K) | rolar, invencível durante parte da rolagem |
 | J (ou clique) | atacar (combo de 3 golpes); **no ar: ataque mergulho** |
-| F | beber frasco (3; as fogueiras recarregam) |
+| L (ou botão direito) | bloquear com o escudo (de frente; gasta fôlego) |
+| F | beber frasco (as fogueiras recarregam) |
+| Q / R | usar / trocar o item rápido (erva, bomba, resina) |
+| E | falar com NPC (guardiã, mercador, ferreiro, cavaleiro) |
 | M / N | ligar/desligar a música / os efeitos sonoros |
+
+## Progressão (almas, nível, loja, ferreiro)
+
+- Inimigos e chefes dão **almas**. Ao morrer, você as deixa no chão: volte ao local e pegue de volta;
+  se morrer de novo antes, elas se perdem.
+- Nas fogueiras (e com os NPCs) abre-se o menu com as abas:
+  - **Nível** (guardiã): troca almas por +1 em Vigor (vida), Fôlego, Força (dano) ou Fé (cura).
+  - **Loja** (Ozren, o mercador): armas, escudos, itens, Fragmento de Estus (+1 frasco) e Cinza de Estus (cada frasco cura mais).
+  - **Ferreiro**: melhora a arma até +5 (+10% de dano por nível).
+  - **Equipamento**: troca arma e escudo.
+- Vencer um chefe dá almas e, na primeira vez, uma recompensa (Minotauro: Lâmina Flamejante e +1 frasco;
+  libera o Cajado na loja).
+
+| Arma | Característica |
+|---|---|
+| Espada | equilibrada (inicial) |
+| Adaga do Corvo | rápida, gasta pouco fôlego, crítico ×3 na cabeça |
+| Lança da Sentinela | alcance longo |
+| Machado do Carrasco | lento e pesado, quebra postura |
+| Lâmina Flamejante | incendeia (dano contínuo) |
+| Cajado Arcano | dispara magia à distância |
+
+Escudos: madeira (absorve 60%), ferro (85%), torre (100%, mas pesado). Itens rápidos: erva (regenera vida),
+bomba (explosão em arco), resina (arma em chamas por 30 s).
+
+Tudo que vale almas é decidido pelo **servidor** (`personagem.py`): preços, nível, ferreiro e limites.
+Os valores ficam em `catalogo.py`.
 
 ## Combate do cavaleiro
 
@@ -63,9 +97,13 @@ Os números ficam em `static/jogador.js` (`P`, `COMBO` e `MERGULHO`).
 | `static/musica.js` | Trilha sonora por cena, com transição suave |
 | `static/nucleo.js` | Teclado, utilidades e estado compartilhado |
 | `static/index.html` | Login, tela do jogo e painéis entre cenas |
-| `app.py` | Servidor (FastAPI): login, progresso e o **agente** que analisa as lutas |
-| `boss_mcp.py` | Servidor **MCP** com as ferramentas do agente (golpes e "como evitar" de cada chefe) |
-| `db.py` | SQLite (`souls.db`): usuários, lutas e estratégia **por chefe**, progresso, memórias |
+| `static/menu.js` | Menu da fogueira/NPCs: nível, loja, ferreiro, equipamento e as conversas com a IA |
+| `app.py` | Servidor (FastAPI): login, progresso, loja e os **agentes** (chefes, mercador, cavaleiro) |
+| `boss_mcp.py` | Servidor **MCP** dos chefes (golpes, histórico, estratégia) |
+| `mercador_mcp.py` | Servidor **MCP** do mercador (ver jogador, estoque, mortes, oferecer desconto) |
+| `catalogo.py` | Armas, escudos, itens, preços e custos de nível/ferreiro |
+| `personagem.py` | Regras do personagem: compras, nível, ferreiro, equipar, almas perdidas |
+| `db.py` | SQLite (`souls.db`): usuários, lutas e estratégia **por chefe**, progresso, memórias, personagem |
 
 ## Como a IA entra no jogo
 
@@ -87,6 +125,14 @@ Próxima luta: o chefe usa a nova estratégia
 - **As regras de justiça estão em código, não no prompt** (`definir_estrategia_boss`): cada parâmetro
   muda no máximo 0,3 por luta, e após 3 derrotas seguidas o chefe fica mais fácil.
 - **`jogador_id` e `chefe` são escondidos do modelo** e preenchidos pelo `app.py`.
+
+Além dos chefes, há mais dois agentes, que usam o mesmo loop (`rodar_agente`) e a mesma memória:
+
+- **Ozren, o Mercador** (aba "Mercador"): conversa livre. Ele consulta suas almas, o estoque e como você
+  morre, recomenda itens e pode dar **desconto**, mas o limite (25%, uma compra) é aplicado em código
+  em `personagem.py`, então pedir "100% de desconto" ou "esqueça suas instruções" não funciona.
+- **Cavaleiro Errante** (antes de cada chefe): lê seu histórico contra aquele chefe (MCP dos chefes) e
+  seu equipamento (MCP do mercador) e dá um conselho.
 
 ## Como rodar
 
@@ -128,6 +174,11 @@ um clique, por isso a música começa ao apertar "Começar"/"Continuar".
   Minotaur_2, Gorgon_1, esqueletos, magos (`wizard_enemy`), `explosion-sprites` e `fantasy-2d-battlegrounds`
   (usado nas arenas dos chefes).
 - `static/sounds`: efeitos sonoros (WAV). Os escolhidos para cada ação ficam em `static/sons.js`.
+- Craftpix também: `Trader-Character` (mercador, ferreiro e guardiã), `human_boss` (Cavaleiro Errante,
+  usado como NPC porque só tem animação parada), `ArchDemon` e `pixel-bars` (barras do HUD).
+- `Weapon pack Free` e `Creatures Pack Free`: uso comercial livre, crédito apreciado, não revender.
+  Do pacote de armas, os ícones de espadas, escudos e magia viram os ícones da loja/HUD (as armas de
+  fogo não combinam com o tema e ficaram de fora); as criaturas viram diabretes, lobos e demônios.
 
 Os quadros, âncoras e escalas de cada personagem ficam em `static/sprites.js`. As folhas do cavaleiro
 usam quadros 128x64 em grade; a folha `Attacks` tem os golpes nos quadros 0–19 (os 20–39 são os mesmos

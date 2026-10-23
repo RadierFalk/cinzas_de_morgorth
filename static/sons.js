@@ -35,6 +35,14 @@ const SONS = {
   olhar: [["Retro/ghost"], 0.45],
   urro: [["Musical Effects/horror_sting"], 0.6],
   chefe_derrotado: [["Musical Effects/brass_level_complete"], 0.6],
+  // Almas, itens e progressão
+  almas: [["Items/gem_collect"], 0.3],
+  pegar_item: [["Items/item_equip"], 0.5],
+  recuperar_almas: [["Musical Effects/vibraphone_chime_positive"], 0.55],
+  compra: [["Items/coins_gather_quick"], 0.55],
+  nivel: [["Musical Effects/harpsichord_positive_long"], 0.55],
+  ferreiro: [["Weapons/sword_sharpen"], 0.6],
+  equipar: [["Weapons/weapon_equip"], 0.55],
   // Mundo e interface
   fogueira: [["Environment/fire_lighting", "Musical Effects/harpsichord_inn"], 0.55],
   area: [["Musical Effects/harpsichord_mystery"], 0.45],

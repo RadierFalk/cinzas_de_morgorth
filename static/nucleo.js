@@ -8,29 +8,38 @@ export const ctx = canvas.getContext("2d");
 export const estado = { jogo: null };
 
 // ===================== Entrada (com buffer, estilo souls) =====================
+// Uma tecla pode ter mais de uma ação: W pula, mas perto de uma escada de mão serve para subir ("cima")
 const MAPA = {
   esquerda: ["KeyA", "ArrowLeft"], direita: ["KeyD", "ArrowRight"],
-  pular: ["KeyW", "ArrowUp", "Space"], esquivar: ["ShiftLeft", "ShiftRight", "KeyK"],
-  atacar: ["KeyJ"], curar: ["KeyF"], descer: ["KeyS", "ArrowDown"],
+  pular: ["KeyW", "ArrowUp", "Space"], cima: ["KeyW", "ArrowUp"], descer: ["KeyS", "ArrowDown"],
+  esquivar: ["ShiftLeft", "ShiftRight", "KeyK"], atacar: ["KeyJ"], bloquear: ["KeyL"],
+  curar: ["KeyF"], usar_item: ["KeyQ"], trocar_item: ["KeyR"], interagir: ["KeyE"],
 };
 const BUFFER_S = 0.25;
 export const segurando = new Set();
 const buffer = {};
 
-function acaoDe(code) {
-  for (const [acao, codigos] of Object.entries(MAPA)) if (codigos.includes(code)) return acao;
-}
-const capturando = () => estado.jogo && !estado.jogo.encerrado;
+const acoesDe = (code) => Object.entries(MAPA).filter(([, codigos]) => codigos.includes(code)).map(([acao]) => acao);
+const capturando = () => estado.jogo && !estado.jogo.encerrado && !estado.jogo.pausado;
 
 addEventListener("keydown", (e) => {
-  const a = acaoDe(e.code);
-  if (!a || !capturando()) return;
+  const acoes = acoesDe(e.code);
+  if (!acoes.length || !capturando()) return;
   e.preventDefault();
-  segurando.add(a);
-  if (!e.repeat) buffer[a] = BUFFER_S;
+  for (const a of acoes) {
+    segurando.add(a);
+    if (!e.repeat) buffer[a] = BUFFER_S;
+  }
 });
-addEventListener("keyup", (e) => { const a = acaoDe(e.code); if (a) segurando.delete(a); });
-canvas.addEventListener("mousedown", (e) => { if (capturando() && e.button === 0) buffer.atacar = BUFFER_S; });
+addEventListener("keyup", (e) => { for (const a of acoesDe(e.code)) segurando.delete(a); });
+// Mouse: esquerdo ataca, direito bloqueia
+canvas.addEventListener("mousedown", (e) => {
+  if (!capturando()) return;
+  if (e.button === 0) buffer.atacar = BUFFER_S;
+  if (e.button === 2) segurando.add("bloquear");
+});
+addEventListener("mouseup", (e) => { if (e.button === 2) segurando.delete("bloquear"); });
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
 export function consumir(acao) {
   if (buffer[acao] > 0) { buffer[acao] = 0; return true; }

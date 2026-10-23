@@ -41,15 +41,19 @@ export function novoBoss(chefe, estrategia) {
     estado: "espera", t: 0, cooldown: 1.6, golpe: null, flash: 0, invulneravel: false,
     est: { ...estrategia, pesos: { ...estrategia.pesos, especial: estrategia.pesos.especial ?? estrategia.pesos.salto ?? 1 } },
   };
-  b.ferir = (dano, x, y, critico) => ferirBoss(b, dano, x, y, critico);
+  b.ferir = (dano, x, y, opts = {}) => {
+    ferirBoss(b, dano, x, y, opts.critico);
+    if (opts.queima && b.estado !== "morto") b.queimando = 2;  // lâmina flamejante / resina
+  };
+  b.queimando = 0; b.tickQueima = 0;
   return b;
 }
 
-function ferirBoss(b, dano, x, y, critico = false) {
+function ferirBoss(b, dano, x, y, critico = false, queimadura = false) {
   const jogo = estado.jogo;
   if (b.invulneravel || b.estado === "morto") return;
   b.hp -= dano; b.flash = 0.1;
-  jogo.hitstop = 0.04; jogo.tremor = Math.max(jogo.tremor, critico ? 7 : 3);
+  if (!queimadura) { jogo.hitstop = 0.04; jogo.tremor = Math.max(jogo.tremor, critico ? 7 : 3); }
   particulas(x, y, "#f5e6c8", critico ? 20 : 10, 180);
   mostrarDano(b.x, b.y - b.h - 20, dano, critico);
 
@@ -119,6 +123,12 @@ export function atualizarBoss(dt) {
   if (b.flash > 0) b.flash -= dt;
   b.hpFantasma = Math.max(b.hp, b.hpFantasma - 60 * dt);
   const dist = Math.abs(j.x - b.x);
+  // Queimando: 4 de dano a cada meio segundo
+  if (b.queimando > 0 && b.estado !== "morto") {
+    b.queimando -= dt;
+    if (Math.random() < 0.5) particulas(b.x + (Math.random() - 0.5) * b.w, b.y - Math.random() * b.h, "#ff8a2a", 1, 60);
+    if ((b.tickQueima -= dt) <= 0) { b.tickQueima = 0.5; ferirBoss(b, 4, b.x, b.y - b.h / 2, false, true); }
+  }
 
   if (b.estado === "transicao") {
     b.vx = 0;

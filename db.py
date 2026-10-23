@@ -59,6 +59,9 @@ def iniciar() -> None:
             id INTEGER PRIMARY KEY, usuario_id INTEGER NOT NULL, fato TEXT NOT NULL,
             UNIQUE (usuario_id, fato)
         );
+        CREATE TABLE IF NOT EXISTS personagens (
+            usuario_id INTEGER PRIMARY KEY, dados TEXT NOT NULL
+        );
     """)
     migrar(conn)
     conn.close()
@@ -167,6 +170,26 @@ def cena_atual(usuario_id: int) -> str:
 def salvar_cena(usuario_id: int, cena: str) -> None:
     executar("INSERT INTO progresso (usuario_id, cena) VALUES (?, ?) "
              "ON CONFLICT (usuario_id) DO UPDATE SET cena = excluded.cena", (usuario_id, cena))
+
+
+# ---------- personagem (nível, almas, equipamento, itens) ----------
+
+def carregar_personagem(usuario_id: int, inicial: dict) -> dict:
+    linhas = executar("SELECT dados FROM personagens WHERE usuario_id = ?", (usuario_id,))
+    if not linhas:
+        return json.loads(json.dumps(inicial))  # cópia
+    dados = json.loads(linhas[0]["dados"])
+    return {**json.loads(json.dumps(inicial)), **dados}  # campos novos ganham o valor inicial
+
+
+def salvar_personagem(usuario_id: int, dados: dict) -> None:
+    executar("INSERT OR REPLACE INTO personagens (usuario_id, dados) VALUES (?, ?)",
+             (usuario_id, json.dumps(dados, ensure_ascii=False)))
+
+
+def chefes_vencidos(usuario_id: int) -> set[str]:
+    return {l["chefe"] for l in executar(
+        "SELECT DISTINCT chefe FROM lutas WHERE usuario_id = ? AND resultado = 'vitoria'", (usuario_id,))}
 
 
 # ---------- memória de longo prazo (compartilhada entre os chefes) ----------

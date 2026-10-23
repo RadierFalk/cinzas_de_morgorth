@@ -5,15 +5,36 @@
 
 const W = 960, H = 540;
 
-// anim: [arquivo, nº de quadros, âncora]
+// anim: [arquivo, nº de quadros, âncora, coluna?]
 // âncora = x do corpo dentro do quadro (medido nos PNGs). Sem ela o personagem "pularia"
 // para o lado ao trocar de animação, porque cada folha tem o corpo num lugar diferente.
-// qw/qh: tamanho do quadro (padrão 128x128)
+// coluna: nas folhas com várias criaturas lado a lado, a criatura é uma coluna e os quadros descem pelas linhas
+// qw/qh: tamanho do quadro (padrão 128x128) · pe: linha do quadro onde ficam os pés (padrão: a base)
+// espelhado: o desenho original olha para a ESQUERDA
+const CRIATURAS = "Creatures Pack Free/Sprites";
+const criatura = (coluna, ancora) => ({ pasta: CRIATURAS, escala: 1.6, qw: 32, qh: 32, pe: 30, espelhado: true, anims: {
+  parado: ["IDLE animation Groupe 1", 4, ancora, coluna], ataque: ["Attack animation Groupe 1", 4, ancora, coluna],
+  ferido: ["Hurt animation Groupe 1", 4, ancora, coluna], surgir: ["appear animation Groupe 1", 7, ancora, coluna],
+  morte: ["disappear animation Groupe 1", 7, ancora, coluna] } });
 const PERSONAGENS = {
   cavaleiro: { pasta: "person", escala: 1.5, qw: 128, qh: 64, anims: {
     parado: ["Idle", 8, 66], correr: ["Run", 8, 62], pulo: ["Jump", 8, 65], rolar: ["Roll", 4, 65],
     ataque: ["Attacks", 20, 66], mergulho: ["attack_from_air", 8, 64], curar: ["Health", 8, 66],
-    rezar: ["Pray", 12, 66], ferido: ["Hurt", 3, 66], morte: ["Death", 4, 66] } },
+    rezar: ["Pray", 12, 66], ferido: ["Hurt", 3, 66], morte: ["Death", 4, 66], escalar: ["Climb", 6, 64] } },
+  // NPCs das fogueiras
+  mercador: { pasta: "Trader-Character/Trader_1", escala: 1.1, anims: {
+    parado: ["Idle", 6, 56], falar: ["Dialogue", 16, 60], aprovar: ["Approval", 8, 67] } },
+  ferreiro: { pasta: "Trader-Character/Trader_2", escala: 1.1, anims: { parado: ["Idle", 14, 53], aprovar: ["Approval", 8, 64] } },
+  guardia: { pasta: "Trader-Character/Trader_3", escala: 1.1, anims: { parado: ["Idle", 6, 56], acenar: ["Idle_3", 15, 55] } },
+  cavaleiro_errante: { pasta: "human_boss/MainCharacter(FreePack)", escala: 1.3, qw: 192, qh: 128, pe: 96, anims: {
+    parado: ["Idle", 10, 98] } },
+  // Inimigos novos
+  archdemon: { pasta: "ArchDemon/SpriteSheets", escala: 1.3, pe: 80, anims: {
+    parado: ["ArchDemonIdle001-Sheet", 6, 62], ataque: ["ArchDemonBasicAtk001-Sheet", 20, 64],
+    ferido: ["ArchDemonHurt001-Sheet", 4, 63], morte: ["ArchDemonDeath001-Sheet", 7, 66] } },
+  diabrete: criatura(1, 12),
+  lobo_sombrio: criatura(14, 16),
+  demonio_rubro: criatura(7, 16),
   minotauro: { pasta: "sprint_minotaur2/Minotaur_2", escala: 1.4, anims: {
     parado: ["Idle", 10, 57], andar: ["Walk", 12, 53], ataque: ["Attack", 5, 53],
     ferido: ["Hurt", 3, 64], morte: ["Dead", 5, 46] } },
@@ -79,6 +100,8 @@ const PECAS = {
   pilar: ["Tiles", 256, 32, 34, 58],          // coluna que sustenta as plataformas
   pilar_quebrado: ["Tiles", 163, 299, 26, 52],
   muro: ["Tiles", 36, 18, 88, 48],            // bloco de tijolos com tampa de pedra
+  tampa: ["Tiles", 36, 18, 88, 16],           // só a tampa de pedra (topo das estruturas e degraus)
+  tijolos: ["Tiles", 36, 34, 88, 32],         // só os tijolos (corpo das estruturas, repete)
   chao: ["Tiles", 128, 17, 96, 47],           // chão com grama (repete na horizontal)
   grade: ["Tiles", 0, 243, 62, 79],
   planta: ["Tiles", 226, 44, 30, 52],
@@ -121,7 +144,22 @@ const CENARIOS = {
     ["ground", 1], ["tree", 0.9, "unico"], ["bones", 1]] },
 };
 
-const folhas = {};       // "cavaleiro/parado" -> { img, branco, vermelho, pedra, n, ancora, qw, qh, cols }
+// Ícones de itens: folhas 16x16 do "Weapon pack Free" e ícones 64x64 do explosion-sprites
+const FOLHAS_ICONES = {
+  espadas: "Weapon pack Free/Sword set/Free sword set.png",
+  escudos: "Weapon pack Free/Shield set/Free shield set.png",
+  magia: "Weapon pack Free/Magic weapon/Free magic weapon set.png",
+};
+// Barras do HUD (pixel-bars): moldura de madeira em 9 fatias + preenchimentos
+const PB = "pixel-bars/addons/pixel_bars";
+const BARRAS = {
+  moldura: `${PB}/frames/wood/bar.png`, moldura_chefe: `${PB}/frames/wood/boss.png`,
+  vida: `${PB}/fills/health/bar.png`, folego: `${PB}/fills/stamina/bar.png`, rastro: `${PB}/fills/trail/bar.png`,
+  vida_chefe: `${PB}/fills/health/boss.png`, rastro_chefe: `${PB}/fills/trail/boss.png`,
+};
+const icones = {}, barras = {};
+
+const folhas = {};       // "cavaleiro/parado" -> { img, branco, vermelho, pedra, n, ancora, qw, qh, cols, coluna, pe }
 const projeteis = {};    // "fogo" -> img
 const efeitos = {};      // "explosao" -> [img, img, ...]
 const cenarios = {};     // "ruinas" -> [{ normal, espelho, vel, unico, frente }]
@@ -129,15 +167,21 @@ const objetos = {};      // "Tiles" -> img
 
 export function carregarSprites() {
   const p = [];
+  const tingidas = {};  // a mesma imagem (folha de criaturas) é usada por várias animações: tinge só uma vez
   for (const [nome, def] of Object.entries(PERSONAGENS)) {
     const qw = def.qw || 128, qh = def.qh || 128;
-    for (const [anim, [arquivo, n, ancora]] of Object.entries(def.anims)) {
-      p.push(carregar(`${def.pasta}/${arquivo}.png`).then((img) => {
-        folhas[`${nome}/${anim}`] = { img, n, ancora, qw, qh, cols: Math.max(1, Math.floor(img.width / qw)),
-          branco: tingir(img, "#ffffff"), vermelho: tingir(img, "#ff2a1a"), pedra: tingir(img, "#8f8b80") };
+    for (const [anim, [arquivo, n, ancora, coluna]] of Object.entries(def.anims)) {
+      const caminho = `${def.pasta}/${arquivo}.png`;
+      p.push(carregar(caminho).then((img) => {
+        tingidas[caminho] ||= { branco: tingir(img, "#ffffff"), vermelho: tingir(img, "#ff2a1a"), pedra: tingir(img, "#8f8b80") };
+        folhas[`${nome}/${anim}`] = { img, n, ancora, qw, qh, coluna, pe: def.pe || qh, espelhado: !!def.espelhado,
+          cols: Math.max(1, Math.floor(img.width / qw)), ...tingidas[caminho] };
       }));
     }
   }
+  for (const [nome, arquivo] of Object.entries(FOLHAS_ICONES)) p.push(carregar(arquivo).then((img) => (icones[nome] = img)));
+  for (let i = 1; i <= 11; i++) p.push(carregar(`explosion-sprites/PNG/Icons/Icon${i}.png`).then((img) => (icones[`icone${i}`] = img)));
+  for (const [nome, arquivo] of Object.entries(BARRAS)) p.push(carregar(arquivo).then((img) => (barras[nome] = img)));
   for (const [nome, def] of Object.entries(PROJETEIS)) p.push(carregar(def.arquivo).then((img) => (projeteis[nome] = img)));
   for (const [nome, def] of Object.entries(EFEITOS)) {
     p.push(Promise.all(def.arquivos.map((a) => carregar(`${PNG_EFEITOS}/${a}.png`))).then((imgs) => (efeitos[nome] = imgs)));
@@ -204,7 +248,7 @@ export function desenharSprite(ctx, nome, anim, quadro, x, y, opts = {}) {
   ctx.globalAlpha *= alpha;
   ctx.translate(Math.round(x), Math.round(y));
   if (rot) { ctx.translate(0, -pivo * escala); ctx.rotate(rot); ctx.translate(0, pivo * escala); }
-  ctx.scale(dir * escala, escala);
+  ctx.scale(dir * escala * (s?.espelhado ? -1 : 1), escala);
   if (!s) {
     ctx.fillStyle = "#444"; ctx.fillRect(-12, -64, 24, 64);  // silhueta de reserva
     ctx.restore();
@@ -212,9 +256,10 @@ export function desenharSprite(ctx, nome, anim, quadro, x, y, opts = {}) {
   }
   ctx.imageSmoothingEnabled = false;  // pixel art nítida
   const q = Math.max(0, Math.min(s.n - 1, Math.floor(quadro)));
-  // Quadro q numa grade de "cols" colunas (nas tiras horizontais, cols = nº de quadros)
-  const sx = (q % s.cols) * s.qw, sy = Math.floor(q / s.cols) * s.qh;
-  const desenhar = (fonte) => ctx.drawImage(fonte, sx, sy, s.qw, s.qh, -s.ancora, -s.qh, s.qw, s.qh);
+  // Quadro q: numa coluna fixa (folhas de criaturas) ou numa grade de "cols" colunas (tiras e grades)
+  const sx = s.coluna != null ? s.coluna * s.qw : (q % s.cols) * s.qw;
+  const sy = s.coluna != null ? q * s.qh : Math.floor(q / s.cols) * s.qh;
+  const desenhar = (fonte) => ctx.drawImage(fonte, sx, sy, s.qw, s.qh, -s.ancora, -s.pe, s.qw, s.qh);
   desenhar(s.img);
   const a = ctx.globalAlpha;
   for (const [fonte, forca] of [[s.pedra, pedra], [s.vermelho, vermelho], [s.branco, branco]]) {
@@ -316,3 +361,63 @@ function desenharNoite(ctx, cam) {
     }
   }
 }
+
+/** Ícone de item: ["espadas"|"escudos"|"magia", coluna, linha] (16x16) ou ["icones", n] (64x64). */
+export function desenharIcone(ctx, icone, x, y, tamanho) {
+  if (!icone) return;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  if (icone[0] === "icones") {
+    const img = icones[`icone${icone[1]}`];
+    if (img) ctx.drawImage(img, Math.round(x), Math.round(y), tamanho, tamanho);
+  } else {
+    const img = icones[icone[0]];
+    if (img) ctx.drawImage(img, icone[1] * 16, icone[2] * 16, 16, 16, Math.round(x), Math.round(y), tamanho, tamanho);
+  }
+  ctx.restore();
+}
+
+// Desenha uma imagem em 9 fatias: cantos fixos, bordas e meio esticados (molduras de qualquer tamanho)
+function noveFatias(ctx, img, x, y, w, h, [l, t, r, b], s) {
+  const iw = img.width, ih = img.height;
+  const sxs = [0, l, iw - r], sws = [l, iw - l - r, r], dxs = [x, x + l * s, x + w - r * s], dws = [l * s, w - (l + r) * s, r * s];
+  const sys = [0, t, ih - b], shs = [t, ih - t - b, b], dys = [y, y + t * s, y + h - b * s], dhs = [t * s, h - (t + b) * s, b * s];
+  for (let i = 0; i < 3; i++) for (let k = 0; k < 3; k++) {
+    if (dws[i] > 0 && dhs[k] > 0) ctx.drawImage(img, sxs[i], sys[k], sws[i], shs[k], Math.round(dxs[i]), Math.round(dys[k]), Math.ceil(dws[i]), Math.ceil(dhs[k]));
+  }
+}
+
+/**
+ * Barra do HUD com moldura de madeira (pixel-bars). tipo: "vida" | "folego" | "chefe".
+ * valor e fantasma de 0 a 1 (o "fantasma" é o rastro amarelo do dano recente). Sem as imagens, usa retângulos.
+ */
+export function desenharBarra(ctx, tipo, x, y, w, h, valor, fantasma = null, piscar = false) {
+  const chefe = tipo === "chefe";
+  const moldura = barras[chefe ? "moldura_chefe" : "moldura"];
+  const fatias = chefe ? [17, 6, 5, 6] : [4, 4, 4, 4], s = 2;
+  if (!moldura) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = piscar ? "#c0392b" : tipo === "folego" ? "#3f8f4a" : "#a32a20";
+    ctx.fillRect(x + 2, y + 2, (w - 4) * Math.max(0, valor), h - 4);
+    return;
+  }
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  noveFatias(ctx, moldura, x, y, w, h, fatias, s);
+  // Área interna (sem a borda da moldura) onde o preenchimento é cortado pelo valor
+  const ix = x + fatias[0] * s, iw = w - (fatias[0] + fatias[2]) * s;
+  const preencher = (img, fracao) => {
+    if (!img || fracao <= 0) return;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ix, y, iw * Math.min(1, fracao), h); ctx.clip();
+    noveFatias(ctx, img, x, y, w, h, fatias, s);
+    ctx.restore();
+  };
+  if (fantasma != null) preencher(barras[chefe ? "rastro_chefe" : "rastro"], fantasma);
+  preencher(barras[chefe ? "vida_chefe" : tipo], valor);
+  if (piscar) { ctx.globalCompositeOperation = "source-atop"; ctx.fillStyle = "rgba(255,40,30,0.55)"; ctx.fillRect(ix, y, iw, h); }
+  ctx.restore();
+}
+
+/** O personagem tem essa animação? (criaturas e o ArchDemon não têm "andar") */
+export const temAnim = (nome, anim) => !!PERSONAGENS[nome]?.anims[anim];

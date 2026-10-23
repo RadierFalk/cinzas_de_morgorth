@@ -13,7 +13,8 @@
   .sub { color: #8a8270; font-style: italic; margin: 0 0 24px; text-align: center; }
   input, button { font: inherit; padding: 10px 14px; background: #111318; color: var(--texto); border: 1px solid #3a3528; }
   button { cursor: pointer; letter-spacing: 2px; }
-  button:hover { border-color: var(--ouro); color: var(--ouro); }
+  button:hover:not(:disabled) { border-color: var(--ouro); color: var(--ouro); }
+  button:disabled { opacity: 0.4; cursor: default; }
   .hidden { display: none !important; }
 
   #login { display: grid; gap: 10px; width: min(320px, 100%); }
@@ -39,9 +40,42 @@
   .mudancas { font-family: system-ui, sans-serif; font-size: 13px; color: #9a927e; max-width: 640px; line-height: 1.6; }
   .mudancas b { color: #e0b85a; font-weight: 600; }
   .ferramentas { font-family: monospace; font-size: 12px; color: #6f6a5d; margin: 0; }
+  .recompensas { color: #8fe3ff; font-family: system-ui, sans-serif; font-size: 14px; margin: 0; }
   .trilha { font-family: system-ui, sans-serif; font-size: 12px; color: #6f6a5d; letter-spacing: 2px; }
   .trilha .feita { color: #8a8270; } .trilha .agora { color: var(--ouro); }
   #painel a { color: #6f6a5d; font-size: 13px; }
+  .botoes { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+  /* Menu da fogueira */
+  #menu { position: absolute; inset: 0; background: rgba(6,6,10,0.94); display: flex; flex-direction: column; padding: 14px 18px; gap: 8px; }
+  .menu-topo { display: flex; justify-content: space-between; align-items: center; }
+  .menu-almas { color: #8fe3ff; font-size: 16px; }
+  .menu-abas { display: flex; gap: 6px; flex-wrap: wrap; }
+  .menu-abas button { padding: 6px 10px; font-size: 13px; letter-spacing: 1px; }
+  .menu-abas button.ativa { border-color: var(--ouro); color: var(--ouro); }
+  .menu-msg { min-height: 18px; font-family: system-ui, sans-serif; font-size: 13px; color: #e0b85a; }
+  .menu-corpo { flex: 1; overflow-y: auto; font-family: system-ui, sans-serif; font-size: 14px; }
+  .menu-corpo .fala { font-family: Georgia, serif; font-size: 16px; margin-bottom: 10px; }
+  .menu-corpo h4 { margin: 12px 0 6px; color: var(--ouro); font-weight: normal; letter-spacing: 2px; }
+  .linha-item { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid #1d1b16; }
+  .linha-item canvas { width: 32px; height: 32px; image-rendering: pixelated; background: #0e0f13; border: 1px solid #2c281f; }
+  .linha-item .desc { flex: 1; color: #b8b09c; }
+  .linha-item .desc b { color: #efe4c8; }
+  .linha-item .valor { width: 32px; text-align: center; font-size: 18px; color: var(--ouro); }
+  .linha-item .preco { color: #8fe3ff; min-width: 70px; text-align: right; }
+  .linha-item.equipado { background: rgba(201,162,39,0.08); }
+  .linha-item button { padding: 6px 12px; font-size: 13px; }
+  .desconto { color: #7be07b !important; }
+  .nota { color: #6f6a5d; font-size: 12px; }
+  .ficha { color: #b8b09c; line-height: 1.8; }
+  .aviso-almas { color: #7be07b; }
+  .chat { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .chat p { margin: 0; padding: 6px 10px; border-radius: 4px; }
+  .chat .user { background: #15171c; align-self: flex-end; }
+  .chat .assistant { background: #1c1712; color: #efe4c8; font-family: Georgia, serif; font-style: italic; }
+  .chat-form { display: flex; gap: 8px; }
+  .chat-form input { flex: 1; font-family: system-ui, sans-serif; font-size: 14px; }
+  .conselho { font-family: Georgia, serif; font-size: 17px; font-style: italic; color: #efe4c8; border-left: 3px solid var(--ouro); padding-left: 12px; }
 </style>
 </head>
 <body>
@@ -70,13 +104,16 @@
     <div class="palco">
       <canvas id="tela" width="960" height="540" tabindex="0"></canvas>
       <div id="painel" class="hidden"></div>
+      <div id="menu" class="hidden"></div>
     </div>
   </div>
 
 <script type="module">
-import { iniciarLuta, iniciarFase, carregarSprites, carregarSons, nomeDoChefe } from "/static/jogo.js";
+import { iniciarLuta, iniciarFase, carregarSprites, carregarSons, nomeDoChefe, pausar, retomar, aplicarPersonagem,
+  relatorioDaCena } from "/static/jogo.js";
 import { tocar, alternarMudo, estaMudo } from "/static/musica.js";
 import { som, liberarAudio, alternarEfeitos, efeitosMudos } from "/static/sons.js";
+import { abrirMenu } from "/static/menu.js";
 
 // A campanha: fases e chefes em sequência (a mesma ordem de db.CENAS no servidor)
 const CENAS = ["ruinas", "minotauro", "floresta", "cripta", "gorgona"];
@@ -84,9 +121,10 @@ const CHEFES = ["minotauro", "gorgona"];
 const NOMES = { ruinas: "Ruínas de Morvath", minotauro: "Morvath, o Guardião", floresta: "Floresta dos Sussurros",
   cripta: "Cripta dos Petrificados", gorgona: "Medrah, a Górgona" };
 const GOLPES = { minotauro: "Combo / Investida / Salto", gorgona: "Chicote / Bote / Olhar" };
+const ABA_DO_NPC = { fogueira: "descansar", guardia: "nivel", mercador: "loja", ferreiro: "ferreiro", cavaleiro_errante: "cavaleiro" };
 
 const $ = (id) => document.getElementById(id);
-let estado = null;       // cena atual + estratégia, fala e placar de cada chefe
+let estado = null;       // cena, chefes, personagem, catálogo e loja (vindos do servidor)
 let acaoDoBotao = null;  // o que o botão principal do painel (e o Enter) faz
 const recursos = Promise.all([carregarSprites(), carregarSons()]);  // começa a baixar imagens e sons já no login
 
@@ -95,15 +133,16 @@ async function api(caminho, corpo) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo),
   });
   const dados = await res.json();
-  if (!res.ok) throw new Error(dados.detail);
+  if (!res.ok) throw new Error(typeof dados.detail === "string" ? dados.detail : "Erro no servidor");
   return dados;
 }
 
 const proxima = (cena) => CENAS[CENAS.indexOf(cena) + 1] || null;
+const contexto = () => ({ personagem: estado.personagem, catalogo: estado.catalogo });
 
 function atualizarInfo() {
   const mortes = CHEFES.reduce((s, c) => s + estado.chefes[c].mortes, 0);
-  $("info").textContent = `${estado.usuario} · ${NOMES[estado.cena]} · mortes em chefes: ${mortes}`;
+  $("info").textContent = `${estado.usuario} · ${NOMES[estado.cena]} · nível ${estado.personagem.nivel} · mortes em chefes: ${mortes}`;
 }
 
 function trilha(atual) {
@@ -116,6 +155,26 @@ async function salvarCena(cena) {
   estado.cena = cena;
   atualizarInfo();
   await api("/api/progresso", { cena }).catch(() => {});
+}
+
+/**
+ * Manda ao servidor o que mudou na cena (almas ganhas, itens usados/encontrados, almas recuperadas
+ * ou deixadas ao morrer) e recebe o personagem atualizado. O servidor é quem guarda a verdade.
+ */
+async function sincronizar(extra = {}) {
+  const r = relatorioDaCena();
+  if (!r && !extra.morreu_em) return;
+  try {
+    const resp = await api("/api/personagem/sincronizar", { ...(r || {}), ...extra });
+    estado.personagem = resp.personagem;
+    aplicarPersonagem(estado.personagem, estado.catalogo);
+    atualizarInfo();
+  } catch { /* sem rede: tenta de novo na próxima sincronização */ }
+}
+
+async function recarregarLoja() {
+  const e = await api("/api/estado");
+  Object.assign(estado, { personagem: e.personagem, loja: e.loja, custo_nivel: e.custo_nivel, custo_melhoria: e.custo_melhoria });
 }
 
 // ===================== Telas =====================
@@ -135,7 +194,7 @@ function telaInicial() {
     <p class="titulo-cena">${NOMES[cena].toUpperCase()}</p>
     ${chefe ? `<p class="fala">“${esc(estado.chefes[cena].fala)}”</p>` : ""}
     ${trilha(cena)}
-    <button id="acao">${cena === "ruinas" ? "Começar" : "Continuar"}</button>
+    <div class="botoes"><button id="acao">${cena === "ruinas" ? "Começar" : "Continuar"}</button><button id="fogueira">🔥 Fogueira</button></div>
     ${cena !== "ruinas" ? `<a href="#" id="recomecar">recomeçar a jornada do início</a>` : ""}`, () => jogar(cena));
   if ($("recomecar")) $("recomecar").onclick = async (e) => { e.preventDefault(); await salvarCena("ruinas"); telaInicial(); };
 }
@@ -152,33 +211,56 @@ let fogueiraDoMeio = null;  // { cena, x }: morrer depois de acendê-la recomeç
 function jogarFase(cena) {
   const inicio = fogueiraDoMeio?.cena === cena ? fogueiraDoMeio.x : 120;
   iniciarFase(cena, {
-    aoMorrer: () => mostrarPainel(`<p class="titulo-cena">${NOMES[cena].toUpperCase()}</p>
-      <p class="fala">As sombras reclamam mais uma alma.</p>
-      <button id="acao">${fogueiraDoMeio?.cena === cena ? "Voltar à fogueira" : "Tentar novamente"}</button>`, () => jogar(cena)),
+    aoMorrer: async (x) => {
+      await sincronizar({ morreu_em: { cena, x } });  // as almas ficam no chão, onde você caiu
+      mostrarPainel(`<p class="titulo-cena">${NOMES[cena].toUpperCase()}</p>
+        <p class="fala">As sombras reclamam mais uma alma.</p>
+        ${estado.personagem.almas_perdidas ? `<p class="recompensas">Suas ${estado.personagem.almas_perdidas.qtd} almas ficaram onde você caiu.</p>` : ""}
+        <div class="botoes"><button id="acao">${fogueiraDoMeio?.cena === cena ? "Voltar à fogueira" : "Tentar novamente"}</button>
+        <button id="fogueira">🔥 Fogueira</button></div>`, () => jogar(cena));
+    },
     aoAcenderFogueira: (x, final) => {
+      sincronizar();
       if (final) { fogueiraDoMeio = null; salvarCena(proxima(cena)); }  // fogueira do fim: salva o progresso no servidor
       else fogueiraDoMeio = { cena, x };
     },
-    aoAtravessarNevoa: () => jogar(proxima(cena)),
-  }, inicio);
+    aoAtravessarNevoa: async () => { await sincronizar(); jogar(proxima(cena)); },
+    aoInteragir: (tipo) => abrirFogueira(tipo, CHEFES.includes(proxima(cena)) ? proxima(cena) : null, true),
+  }, inicio, contexto());
 }
 
 function lutarContra(chefe) {
   const c = estado.chefes[chefe];
-  iniciarLuta(chefe, c.estrategia, c.fala, (log) => aoFimDaLuta(chefe, log));
+  iniciarLuta(chefe, c.estrategia, c.fala, (log, x) => aoFimDaLuta(chefe, log, x), contexto());
 }
 
-async function aoFimDaLuta(chefe, log) {
+/** Abre o menu da fogueira. No meio de uma fase, o jogo fica pausado até voltar. */
+async function abrirFogueira(tipo = "fogueira", chefe = null, emJogo = false) {
+  if (emJogo) { pausar(); await sincronizar(); }
+  await recarregarLoja();
+  const descanso = tipo === "fogueira" || !emJogo;
+  abrirMenu({
+    raiz: $("menu"), estado, api, aba: ABA_DO_NPC[tipo] || "descansar", chefe, descanso,
+    aoFechar: () => {
+      atualizarInfo();
+      if (emJogo) { aplicarPersonagem(estado.personagem, estado.catalogo, descanso); retomar(); }
+    },
+  });
+}
+
+async function aoFimDaLuta(chefe, log, x) {
   const nome = nomeDoChefe(chefe).split(",")[0];
   mostrarPainel(`<p class="pensando">${log.resultado === "morte"
     ? `${nome} reflete sobre a sua queda...` : `Das cinzas, ${nome} se lembra de você...`}</p>`);
+  await sincronizar(log.resultado === "morte" ? { morreu_em: { cena: chefe, x } } : {});
   const antes = estado.chefes[chefe].estrategia;
   let r;
   try {
     r = await api(`/api/luta/${chefe}`, log);
     Object.assign(estado.chefes[chefe], { estrategia: r.estrategia, fala: r.fala, mortes: r.mortes, vitorias: r.vitorias });
+    Object.assign(estado, { personagem: r.personagem, loja: r.loja });
   } catch (err) {
-    r = { fala: err.message, dica: "", ferramentas: [], erro: null, estrategia: antes };
+    r = { fala: err.message, dica: "", ferramentas: [], erro: null, estrategia: antes, recompensas: [] };
   }
 
   const relatorio = `
@@ -187,23 +269,25 @@ async function aoFimDaLuta(chefe, log) {
     <div class="mudancas">${descreverMudancas(chefe, antes, r.estrategia)}</div>
     ${r.ferramentas.length ? `<p class="ferramentas">ferramentas usadas pela IA: ${r.ferramentas.join(" → ")}</p>` : ""}
     ${r.erro ? `<p class="ferramentas">a IA falhou (${esc(r.erro).slice(0, 120)}); o chefe mantém a estratégia</p>` : ""}`;
+  const fogueiraBtn = `<button id="fogueira">🔥 Fogueira</button>`;
 
   if (log.resultado === "morte") {
-    mostrarPainel(relatorio + `<button id="acao">Tentar novamente</button>`, () => jogar(chefe));
+    mostrarPainel(relatorio + `<div class="botoes"><button id="acao">Tentar novamente</button>${fogueiraBtn}</div>`, () => jogar(chefe));
     return;
   }
-  // Vitória: libera a próxima cena (ou o fim da jornada)
+  // Vitória: recompensas e a próxima cena (ou o fim da jornada)
+  const ganhos = r.recompensas?.length ? `<p class="recompensas">Você obteve: ${r.recompensas.map(esc).join(" · ")}</p>` : "";
   const prox = proxima(chefe);
   if (prox) {
     await salvarCena(prox);
-    mostrarPainel(`<p class="titulo-cena">${nomeDoChefe(chefe).toUpperCase()} FOI DERROTADO</p>` + relatorio + trilha(prox) +
-      `<button id="acao">Seguir para ${NOMES[prox]}</button>`, () => jogar(prox));
+    mostrarPainel(`<p class="titulo-cena">${nomeDoChefe(chefe).toUpperCase()} FOI DERROTADO</p>` + ganhos + relatorio + trilha(prox) +
+      `<div class="botoes"><button id="acao">Seguir para ${NOMES[prox]}</button>${fogueiraBtn}</div>`, () => jogar(prox));
   } else {
     tocar("vitoria");
     som("vitoria");
-    mostrarPainel(`<p class="titulo-cena">A JORNADA TERMINOU</p>` + relatorio +
+    mostrarPainel(`<p class="titulo-cena">A JORNADA TERMINOU</p>` + ganhos + relatorio +
       `<p class="fala">Os guardiões caíram. Mas eles se lembram de você.</p>
-      <button id="acao">Enfrentar ${nome} de novo</button>
+      <div class="botoes"><button id="acao">Enfrentar ${nome} de novo</button>${fogueiraBtn}</div>
       <a href="#" id="recomecar">recomeçar a jornada do início</a>`, () => jogar(chefe));
     $("recomecar").onclick = async (e) => { e.preventDefault(); await salvarCena("ruinas"); telaInicial(); };
   }
@@ -232,6 +316,11 @@ function mostrarPainel(html, acao = null) {
   $("painel").classList.remove("hidden");
   acaoDoBotao = acao ? () => { som("clique"); acao(); } : null;
   if (acao) $("acao").onclick = acaoDoBotao;
+  // O botão "Fogueira" dos painéis abre o menu (subir de nível, loja...) entre uma tentativa e outra
+  if ($("fogueira")) {
+    const proximoChefe = CHEFES.includes(estado.cena) ? estado.cena : null;
+    $("fogueira").onclick = () => { som("clique"); abrirFogueira("fogueira", proximoChefe, false); };
+  }
 }
 
 // ===================== Controles da página =====================
@@ -247,8 +336,10 @@ atualizarBotaoSom();
 addEventListener("pointerdown", liberarAudio);
 addEventListener("keydown", (e) => {
   liberarAudio();
+  if (e.target.tagName === "INPUT") return;  // digitando (login, chat do mercador): nada de atalhos
+  const menuAberto = !$("menu").classList.contains("hidden");
   // Enter aciona o botão principal do painel; M liga/desliga a música; N, os efeitos
-  if (e.key === "Enter" && !$("painel").classList.contains("hidden") && acaoDoBotao) acaoDoBotao();
+  if (e.key === "Enter" && !menuAberto && !$("painel").classList.contains("hidden") && acaoDoBotao) acaoDoBotao();
   if ($("area").classList.contains("hidden")) return;
   if (e.code === "KeyM") { alternarMudo(); atualizarBotaoSom(); }
   if (e.code === "KeyN") { alternarEfeitos(); atualizarBotaoSom(); }
