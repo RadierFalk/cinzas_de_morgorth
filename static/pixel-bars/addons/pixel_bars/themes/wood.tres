@@ -1,0 +1,63 @@
+[gd_resource type="Theme" load_steps=11 format=3]
+
+[ext_resource type="Texture2D" path="res://addons/pixel_bars/frames/wood/bar.png" id="1_bar"]
+[ext_resource type="Texture2D" path="res://addons/pixel_bars/fills/health/bar.png" id="fill_health"]
+[ext_resource type="Texture2D" path="res://addons/pixel_bars/fills/mana/bar.png" id="fill_mana"]
+[ext_resource type="Texture2D" path="res://addons/pixel_bars/fills/stamina/bar.png" id="fill_stamina"]
+[ext_resource type="FontFile" path="res://addons/pixel_bars/font/pixel_ui_font.fnt" id="font"]
+
+[sub_resource type="StyleBoxTexture" id="sb_1"]
+texture = ExtResource("1_bar")
+texture_margin_left = 4.0
+texture_margin_top = 4.0
+texture_margin_right = 4.0
+texture_margin_bottom = 4.0
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+
+[sub_resource type="StyleBoxTexture" id="sb_2"]
+texture = ExtResource("fill_health")
+texture_margin_left = 4.0
+texture_margin_top = 4.0
+texture_margin_right = 4.0
+texture_margin_bottom = 4.0
+
+[sub_resource type="StyleBoxTexture" id="sb_3"]
+texture = ExtResource("fill_health")
+texture_margin_left = 4.0
+texture_margin_top = 4.0
+texture_margin_right = 4.0
+texture_margin_bottom = 4.0
+
+[sub_resource type="StyleBoxTexture" id="sb_4"]
+texture = ExtResource("fill_mana")
+texture_margin_left = 4.0
+texture_margin_top = 4.0
+texture_margin_right = 4.0
+texture_margin_bottom = 4.0
+
+[sub_resource type="StyleBoxTexture" id="sb_5"]
+texture = ExtResource("fill_stamina")
+texture_margin_left = 4.0
+texture_margin_top = 4.0
+texture_margin_right = 4.0
+texture_margin_bottom = 4.0
+
+[resource]
+default_font = ExtResource("font")
+default_font_size = 8
+ProgressBar/colors/font_color = Color(1.000, 1.000, 1.000, 1.0)
+ProgressBar/colors/font_outline_color = Color(0.000, 0.000, 0.000, 1.0)
+ProgressBar/styles/background = SubResource("sb_1")
+ProgressBar/styles/fill = SubResource("sb_2")
+HealthBar/base_type = &"ProgressBar"
+HealthBar/styles/background = SubResource("sb_1")
+HealthBar/styles/fill = SubResource("sb_3")
+ManaBar/base_type = &"ProgressBar"
+ManaBar/styles/background = SubResource("sb_1")
+ManaBar/styles/fill = SubResource("sb_4")
+StaminaBar/base_type = &"ProgressBar"
+StaminaBar/styles/background = SubResource("sb_1")
+StaminaBar/styles/fill = SubResource("sb_5")

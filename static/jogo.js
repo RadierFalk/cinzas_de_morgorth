@@ -1,39 +1,27 @@
-// Cenas do jogo: a fase (Ruínas, com esqueletos) e a arena do chefão.
-// O combate é 100% código determinístico. A IA só muda a ESTRATÉGIA do boss entre as lutas
+// Cenas do jogo: fases (com plataformas, obstáculos e inimigos) e arenas de chefe.
+// O combate é 100% código determinístico. A IA só muda a ESTRATÉGIA dos chefes entre as lutas
 // (veja app.py e boss_mcp.py).
 import { W, H, CHAO, ctx, estado, avancarBuffer, limparEntrada, canvas, lerp } from "./nucleo.js";
-import { novaJogadora, atualizarJogadora, desenharJogadora } from "./jogador.js";
-import { NOME_BOSS, novoBoss, atualizarBoss, atualizarOndas, desenharBoss, desenharOndas } from "./boss.js";
+import { novaJogadora, atualizarJogadora, desenharJogadora, rezar } from "./jogador.js";
+import { novoBoss, nomeDoChefe, atualizarBoss, atualizarOndas, desenharBoss, desenharOndas } from "./boss.js";
 import { novoInimigo, atualizarInimigos, desenharInimigos, vivo } from "./inimigos.js";
-import { carregarSprites } from "./sprites.js";
+import { carregarSprites, desenharCenario, desenharEfeito, ciclo } from "./sprites.js";
+import { atualizarEfeitos, desenharEfeitos } from "./efeitos.js";
+import { desenharMundo, gerarDecoracao } from "./mundo.js";
+import { FASES, ARENAS } from "./fases.js";
+import { carregarSons, som, ambienteLigado } from "./sons.js";
 
-export { carregarSprites };
+export { carregarSprites, carregarSons, nomeDoChefe, FASES };
 
 // Para inspecionar pelo console do navegador: (await import("/static/jogo.js")).depurar()
 export const depurar = () => estado.jogo;
 
-// ===================== Layout da fase =====================
-const FASE = {
-  nome: "RUÍNAS DE MORVATH",
-  largura: 3600,
-  inicio: 120,
-  fogueira: 3200,
-  nevoa: 3460,
-  inimigos: [
-    // Grupos pequenos e espaçados: no máximo dois esqueletos acordam ao mesmo tempo
-    ["guerreiro", 760], ["lanceiro", 1150], ["arqueiro", 1330], ["guerreiro", 1880], ["guerreiro", 2010],
-    ["arqueiro", 2560], ["lanceiro", 2920], ["guerreiro", 3060],
-  ],
-  lapides: [420, 980, 1350, 1760, 2250, 2620, 3080],
-};
-
-function novaCena(modo, callbacks) {
+function novaCena(modo, cenario, callbacks) {
   limparEntrada();
   const jogo = {
-    modo, t: 0, tremor: 0, hitstop: 0, fim: null, encerrado: false, fade: 1, saida: null,
-    mundoW: modo === "fase" ? FASE.largura : W, cam: 0,
-    jogador: novaJogadora(modo === "fase" ? FASE.inicio : 180),
-    boss: null, inimigos: [], projeteis: [], ondas: [], particulas: [], textos: [],
+    modo, cenario, t: 0, tremor: 0, hitstop: 0, fim: null, encerrado: false, fade: 1, saida: null,
+    mundoW: W, cam: 0, jogador: null, boss: null, inimigos: [], plataformas: [], blocos: [],
+    projeteis: [], raios: [], ondas: [], efeitos: [], particulas: [], textos: [],
     legenda: null, aviso: null, ...callbacks,
     log: {
       resultado: null, duracao_s: 0, fase_alcancada: 1,
@@ -45,22 +33,36 @@ function novaCena(modo, callbacks) {
   jogo.alvos = () => (jogo.boss ? (jogo.boss.estado !== "morto" ? [jogo.boss] : []) : jogo.inimigos.filter(vivo));
   jogo.terminar = (resultado) => terminar(jogo, resultado);
   estado.jogo = jogo;
+  ambienteLigado(modo === "fase");  // vento só nas fases
   canvas.focus();
   return jogo;
 }
 
-/** Fase antes do chefão. callbacks: aoMorrer(), aoAcenderFogueira(), aoChegarNoBoss() */
-export function iniciarFase(callbacks) {
-  const jogo = novaCena("fase", callbacks);
-  jogo.inimigos = FASE.inimigos.map(([tipo, x]) => novoInimigo(tipo, x));
-  jogo.fogueira = { x: FASE.fogueira, acesa: !!callbacks.fogueiraAcesa };
-  jogo.aviso = { txt: FASE.nome, vida: 4, total: 4, cor: "#d8cfb8" };
+/**
+ * Fase. callbacks: aoMorrer(), aoAcenderFogueira(x, final), aoAtravessarNevoa()
+ * inicioX: onde a jogadora aparece (a fogueira do meio, se já foi acesa). Inimigos que ficaram
+ * para trás dela não voltam.
+ */
+export function iniciarFase(id, callbacks, inicioX = 120) {
+  const f = FASES[id];
+  const jogo = novaCena("fase", f.cenario, callbacks);
+  jogo.faseId = id; jogo.fase = f; jogo.mundoW = f.largura;
+  jogo.plataformas = f.plataformas.map((p) => ({ ...p }));
+  jogo.blocos = f.blocos.map((b) => ({ ...b }));
+  jogo.jogador = novaJogadora(inicioX);
+  jogo.inimigos = f.inimigos.filter(([, x]) => x > inicioX + 150).map(([tipo, x, altura]) => novoInimigo(tipo, x, CHAO - altura));
+  jogo.fogueiras = [{ x: f.meio, final: false }, { x: f.fogueira, final: true }].map((fg) => ({ ...fg, acesa: fg.x <= inicioX }));
+  jogo.decoracao = gerarDecoracao(f.tema, f.largura);
+  jogo.cam = Math.max(0, Math.min(jogo.mundoW - W, inicioX - W * 0.4));
+  jogo.aviso = { txt: f.nome, vida: 4, total: 4, cor: "#d8cfb8" };
+  som("area");
 }
 
-/** Luta contra o chefão. A estratégia vem da IA (via servidor). */
-export function iniciarLuta(estrategia, fala, aoTerminar) {
-  const jogo = novaCena("boss", { aoTerminar });
-  jogo.boss = novoBoss(estrategia);
+/** Luta contra um chefe. A estratégia vem da IA (via servidor). */
+export function iniciarLuta(chefe, estrategia, fala, aoTerminar) {
+  const jogo = novaCena("chefe", ARENAS[chefe].cenario, { aoTerminar });
+  jogo.jogador = novaJogadora(180);
+  jogo.boss = novoBoss(chefe, estrategia);
   if (fala) jogo.legenda = { txt: fala, vida: 7 };
 }
 
@@ -90,6 +92,7 @@ function atualizar(dt) {
   else atualizarInimigos(dt);
   separarCorpos(jogo);
   if (jogo.modo === "fase") atualizarFase(jogo, dt);
+  atualizarEfeitos(dt);
 
   for (const p of jogo.particulas) { p.vy += 600 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vida -= dt; }
   jogo.particulas = jogo.particulas.filter((p) => p.vida > 0);
@@ -99,48 +102,51 @@ function atualizar(dt) {
   if (jogo.aviso && (jogo.aviso.vida -= dt) <= 0) jogo.aviso = null;
   jogo.tremor *= 0.88;
 
-  // Câmera segue a jogadora (só se move na fase; a arena cabe na tela)
+  // Câmera segue a jogadora (nas arenas ela não se move: tudo cabe na tela)
   const alvo = Math.max(0, Math.min(jogo.mundoW - W, j.x - W * 0.4));
   jogo.cam += (alvo - jogo.cam) * Math.min(1, dt * 6);
 
   if (jogo.fim && !jogo.encerrado && (jogo.fim.espera -= dt) <= 0) {
     jogo.encerrado = true;
-    if (jogo.modo === "boss") jogo.aoTerminar?.(jogo.log);
+    if (jogo.modo === "chefe") jogo.aoTerminar?.(jogo.log);
     else jogo.aoMorrer?.();
   }
 }
 
 function atualizarFase(jogo, dt) {
-  const j = jogo.jogador, f = jogo.fogueira;
-  if (Math.random() < (f.acesa ? 0.6 : 0.08)) {
-    jogo.particulas.push({ x: f.x + (Math.random() - 0.5) * 14, y: CHAO - 8, vx: (Math.random() - 0.5) * 20,
-      vy: -60 - Math.random() * 60, vida: 0.6 + Math.random() * 0.5, cor: Math.random() < 0.5 ? "#ff9a3c" : "#ffd36b", tam: 2 + Math.random() * 2 });
+  const j = jogo.jogador;
+  for (const f of jogo.fogueiras) {
+    // Acender uma fogueira: recupera vida, fôlego e frascos, e vira o ponto de retorno
+    if (!f.acesa && j.estado === "livre" && j.noChao && Math.abs(j.x - f.x) < 40 && j.y > CHAO - 10) {
+      f.acesa = true;
+      j.hp = j.hpMax; j.hpFantasma = j.hpMax; j.frascos = 3; j.est = j.estMax;
+      rezar(j);  // ajoelha diante da fogueira
+      som("fogueira", f.x);
+      jogo.aviso = { txt: "FOGUEIRA ACESA", vida: 3, total: 3, cor: "#e8b04a" };
+      jogo.aoAcenderFogueira?.(f.x, f.final);
+    }
+    if (f.acesa && Math.random() < 0.3) {
+      jogo.particulas.push({ x: f.x + (Math.random() - 0.5) * 20, y: CHAO - 30, vx: (Math.random() - 0.5) * 20,
+        vy: -60 - Math.random() * 60, vida: 0.6 + Math.random() * 0.5, cor: Math.random() < 0.5 ? "#ff9a3c" : "#ffd36b", tam: 2 });
+    }
   }
-  // Acender a fogueira: recupera tudo e salva o progresso
-  if (!f.acesa && j.estado !== "morto" && Math.abs(j.x - f.x) < 40) {
-    f.acesa = true;
-    j.hp = j.hpMax; j.hpFantasma = j.hpMax; j.frascos = 3; j.est = j.estMax;
-    jogo.aviso = { txt: "FOGUEIRA ACESA", vida: 3, total: 3, cor: "#e8b04a" };
-    jogo.aoAcenderFogueira?.();
-  }
-  // Atravessar a névoa leva ao chefão
-  if (!jogo.saida && j.x >= FASE.nevoa && j.estado !== "morto") {
-    jogo.saida = { t: 0 };
-  }
+  // Atravessar a névoa leva à próxima cena
+  if (!jogo.saida && j.x >= jogo.fase.nevoa && j.estado !== "morto") jogo.saida = { t: 0 };
   if (jogo.saida) {
     // Caminha sozinha para dentro da névoa enquanto a tela escurece
     j.dir = 1; j.vx = 60;
     j.x += j.vx * dt;
-    if ((jogo.saida.t += dt) >= 1.2 && !jogo.encerrado) { jogo.encerrado = true; jogo.aoChegarNoBoss?.(); }
+    if ((jogo.saida.t += dt) >= 1.2 && !jogo.encerrado) { jogo.encerrado = true; jogo.aoAtravessarNevoa?.(); }
   }
 }
 
 // Ninguém atravessa ninguém andando (só rolando)
 function separarCorpos(jogo) {
   const j = jogo.jogador;
-  if (j.estado !== "rolar" && j.y > CHAO - 60) {
+  if (j.estado !== "rolar") {
     const corpos = jogo.boss ? (jogo.boss.estado !== "morto" ? [jogo.boss] : []) : jogo.inimigos.filter(vivo);
     for (const c of corpos) {
+      if (Math.abs(j.y - c.y) > 40) continue;  // um em cima da plataforma, outro embaixo
       const minDist = (j.w + c.w) / 2 - 6, dx = j.x - c.x;
       if (Math.abs(dx) < minDist) j.x = c.x + (dx >= 0 ? 1 : -1) * minDist;
     }
@@ -154,103 +160,68 @@ function loop(ts) {
   const dt = Math.min(1 / 30, (ts - ultimo) / 1000 || 0);
   ultimo = ts;
   if (estado.jogo) { atualizar(dt); desenhar(); }
-  else desenharFundo(ts / 1000, 0);
+  else desenharCenario(ctx, "ruinas", ts * 0.02);  // tela de título: cenário passando devagar
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
-// ===================== Cenário (camadas com parallax) =====================
-function camada(desenho) {
-  const c = document.createElement("canvas");
-  c.width = W; c.height = H;
-  desenho(c.getContext("2d"));
-  return c;
-}
-const ceu = camada((f) => {
-  const g = f.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, "#07080d"); g.addColorStop(0.55, "#161a24"); g.addColorStop(1, "#22262f");
-  f.fillStyle = g; f.fillRect(0, 0, W, H);
-  const halo = f.createRadialGradient(770, 95, 20, 770, 95, 160);
-  halo.addColorStop(0, "rgba(230,220,190,0.25)"); halo.addColorStop(1, "rgba(230,220,190,0)");
-  f.fillStyle = halo; f.fillRect(0, 0, W, H);
-  f.fillStyle = "#e6dcc0"; f.beginPath(); f.arc(770, 95, 34, 0, Math.PI * 2); f.fill();
-});
-const ruinas = camada((f) => {
-  f.fillStyle = "#11141b";
-  [[60, 170], [190, 120], [330, 200], [610, 150], [730, 110], [880, 190]].forEach(([x, alt]) => {
-    f.fillRect(x, CHAO - 200 - alt, 46, 200 + alt);
-    f.beginPath(); f.moveTo(x, CHAO - 200 - alt); f.lineTo(x + 20, CHAO - 225 - alt); f.lineTo(x + 46, CHAO - 205 - alt); f.lineTo(x + 46, CHAO - 200 - alt); f.fill();
-  });
-  f.fillRect(0, CHAO - 120, W, 120);
-});
-const chao = camada((f) => {
-  f.fillStyle = "#1b1e25"; f.fillRect(0, CHAO, W, H - CHAO);
-  f.fillStyle = "#3b404c"; f.fillRect(0, CHAO, W, 3);
-  f.strokeStyle = "#262a33"; f.lineWidth = 2;
-  for (let x = 0; x < W; x += 70) { f.beginPath(); f.moveTo(x, CHAO + 3); f.lineTo(x + 12, H); f.stroke(); }
-});
-
-function repetir(img, deslocamento) {
-  const x = -(((deslocamento % W) + W) % W);
-  ctx.drawImage(img, x, 0); ctx.drawImage(img, x + W, 0);
-}
-
-function desenharFundo(t, cam) {
-  ctx.drawImage(ceu, 0, 0);
-  repetir(ruinas, cam * 0.35);
-  repetir(chao, cam);
-  for (let i = 0; i < 3; i++) {
-    const x = ((t * (12 + i * 8) + i * 300) % (W + 400)) - 200;
-    const g = ctx.createRadialGradient(x, CHAO - 30 - i * 40, 10, x, CHAO - 30 - i * 40, 260);
-    g.addColorStop(0, "rgba(150,160,180,0.07)"); g.addColorStop(1, "rgba(150,160,180,0)");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  }
-}
-
-function desenharCenarioDaFase(jogo) {
-  // Lápides
-  ctx.fillStyle = "#2a2e38";
-  for (const x of FASE.lapides) {
-    ctx.beginPath(); ctx.moveTo(x - 12, CHAO); ctx.lineTo(x - 12, CHAO - 26); ctx.arc(x, CHAO - 26, 12, Math.PI, 0); ctx.lineTo(x + 12, CHAO); ctx.fill();
-  }
-  // Fogueira: espada cravada num monte de cinzas
-  const f = jogo.fogueira;
-  ctx.fillStyle = "#2b2622"; ctx.beginPath(); ctx.ellipse(f.x, CHAO, 26, 7, 0, Math.PI, 0); ctx.fill();
-  ctx.fillStyle = "#8d8f98"; ctx.fillRect(f.x - 2, CHAO - 46, 4, 42);
-  ctx.fillStyle = "#5a4a32"; ctx.fillRect(f.x - 9, CHAO - 50, 18, 4);
-  if (f.acesa) {
-    const g = ctx.createRadialGradient(f.x, CHAO - 20, 4, f.x, CHAO - 20, 120);
-    g.addColorStop(0, "rgba(255,160,60,0.35)"); g.addColorStop(1, "rgba(255,160,60,0)");
-    ctx.fillStyle = g; ctx.fillRect(f.x - 120, CHAO - 140, 240, 160);
-  }
-  // Névoa que leva ao chefão
-  for (let i = 0; i < 6; i++) {
-    ctx.fillStyle = `rgba(220,225,235,${0.08 + 0.04 * Math.sin(jogo.t * 2 + i)})`;
-    ctx.fillRect(FASE.nevoa + i * 10 + Math.sin(jogo.t * 1.5 + i) * 6, CHAO - 220, 26, 220);
-  }
-}
-
 // ===================== Desenho =====================
+function desenharFogueiraENevoa(jogo) {
+  for (const f of jogo.fogueiras) {
+    // Fogueira: espada cravada num monte de cinzas
+    ctx.fillStyle = "#2b2622"; ctx.beginPath(); ctx.ellipse(f.x, CHAO, 26, 7, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = "#8d8f98"; ctx.fillRect(f.x - 2, CHAO - 46, 4, 42);
+    ctx.fillStyle = "#5a4a32"; ctx.fillRect(f.x - 9, CHAO - 50, 18, 4);
+    if (f.acesa) {
+      const g = ctx.createRadialGradient(f.x, CHAO - 20, 4, f.x, CHAO - 20, 130);
+      g.addColorStop(0, "rgba(255,160,60,0.4)"); g.addColorStop(1, "rgba(255,160,60,0)");
+      ctx.fillStyle = g; ctx.fillRect(f.x - 130, CHAO - 150, 260, 170);
+      desenharEfeito(ctx, "fogo", ciclo(jogo.t, 10, 6), f.x, CHAO + 2, 0.5);
+    } else {
+      ctx.fillStyle = "#ff7a2a"; ctx.globalAlpha = 0.5 + 0.3 * Math.sin(jogo.t * 4);
+      ctx.fillRect(f.x - 6, CHAO - 4, 3, 2); ctx.fillRect(f.x + 4, CHAO - 3, 2, 2);
+      ctx.globalAlpha = 1;
+    }
+  }
+  // Névoa que leva à próxima cena
+  const nx = jogo.fase.nevoa;
+  for (let i = 0; i < 7; i++) {
+    ctx.fillStyle = `rgba(220,225,235,${0.08 + 0.05 * Math.sin(jogo.t * 2 + i)})`;
+    ctx.fillRect(nx + i * 10 + Math.sin(jogo.t * 1.5 + i) * 6, CHAO - 240, 26, 240);
+  }
+}
+
 function desenhar() {
   const jogo = estado.jogo;
   ctx.save();
   if (jogo.tremor > 0.5) ctx.translate((Math.random() - 0.5) * jogo.tremor, (Math.random() - 0.5) * jogo.tremor);
-  desenharFundo(jogo.t, jogo.cam);
+  desenharCenario(ctx, jogo.cenario, jogo.cam);
+  if (jogo.fase?.tinta) { ctx.fillStyle = jogo.fase.tinta; ctx.fillRect(0, 0, W, H); }  // clima de cada fase
 
   ctx.save();
   ctx.translate(-Math.round(jogo.cam), 0);  // daqui em diante: coordenadas do mundo
-  if (jogo.modo === "fase") { desenharCenarioDaFase(jogo); desenharInimigos(ctx); }
-  if (jogo.boss) { desenharOndas(ctx); desenharBoss(ctx, jogo.boss); }
+  if (jogo.modo === "fase") {
+    desenharMundo(ctx);
+    desenharFogueiraENevoa(jogo);
+    desenharInimigos(ctx);
+  }
+  if (jogo.boss) { desenharOndas(ctx, jogo.t); desenharBoss(ctx, jogo.boss); }
   desenharJogadora(ctx, jogo.jogador, jogo.t);
+  desenharEfeitos(ctx);
   for (const p of jogo.particulas) {
     ctx.globalAlpha = Math.min(1, p.vida * 2); ctx.fillStyle = p.cor;
     ctx.fillRect(p.x, p.y, p.tam, p.tam);
   }
   ctx.globalAlpha = 1;
-  ctx.font = "bold 18px Georgia"; ctx.textAlign = "center";
-  for (const t of jogo.textos) { ctx.globalAlpha = Math.min(1, t.vida * 2); ctx.fillStyle = t.cor; ctx.fillText(t.txt, t.x, t.y); }
+  ctx.textAlign = "center";
+  for (const t of jogo.textos) {
+    ctx.font = `bold ${t.tamanho}px Georgia`;
+    ctx.globalAlpha = Math.min(1, t.vida * 2); ctx.fillStyle = t.cor;
+    ctx.fillText(t.txt, t.x, t.y);
+  }
   ctx.globalAlpha = 1;
   ctx.restore();
+  desenharCenario(ctx, jogo.cenario, jogo.cam, true);  // camadas da frente (vaga-lumes etc.)
   ctx.restore();
 
   desenharHUD(jogo);
@@ -268,7 +239,10 @@ function barra(x, y, w, h, valor, fantasma, cor) {
 function desenharHUD(jogo) {
   const j = jogo.jogador, b = jogo.boss;
   barra(24, 22, 260, 12, j.hp / j.hpMax, j.hpFantasma / j.hpMax, "#a32a20");
-  barra(24, 40, 200, 7, j.est / j.estMax, null, "#3f8f4a");
+  // Fôlego: pisca em vermelho quando falta fôlego para a ação
+  const semFolego = j.semFolego > 0 && Math.floor(jogo.t * 16) % 2 === 0;
+  barra(24, 40, 200, 7, j.est / j.estMax, null, semFolego ? "#c0392b" : "#3f8f4a");
+  if (j.semFolego > 0) { ctx.strokeStyle = "#c0392b"; ctx.lineWidth = 2; ctx.strokeRect(21, 37, 206, 13); }
   for (let i = 0; i < 3; i++) {
     ctx.fillStyle = i < j.frascos ? "#e8c35a" : "#3a3a3a";
     ctx.beginPath(); ctx.arc(32 + i * 20, 64, 6, 0, Math.PI * 2); ctx.fill();
@@ -276,12 +250,15 @@ function desenharHUD(jogo) {
 
   ctx.textAlign = "center";
   if (b) {
-    ctx.font = "18px Georgia"; ctx.fillStyle = "#d8cfb8";
-    ctx.fillText(NOME_BOSS, W / 2, H - 38);
+    ctx.font = "18px Georgia"; ctx.fillStyle = "#efe4c8";
+    ctx.shadowColor = "#000"; ctx.shadowBlur = 4;
+    ctx.fillText(b.perfil.nome, W / 2, H - 38);
+    ctx.shadowBlur = 0;
     barra(W / 2 - 300, H - 28, 600, 9, b.hp / b.hpMax, b.hpFantasma / b.hpMax, "#8b1a1a");
   }
   if (jogo.legenda) {
     ctx.globalAlpha = Math.min(1, jogo.legenda.vida, (7 - jogo.legenda.vida) * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(80, 82, W - 160, 66);
     ctx.font = "italic 19px Georgia"; ctx.fillStyle = "#efe4c8";
     quebrarTexto(`“${jogo.legenda.txt}”`, W / 2, 110, 760, 26);
     ctx.globalAlpha = 1;
@@ -290,15 +267,17 @@ function desenharHUD(jogo) {
     // Letreiro no estilo souls: nome da área / fogueira acesa
     const a = jogo.aviso;
     ctx.globalAlpha = Math.max(0, Math.min(1, a.vida, (a.total - a.vida) * 2));  // aparece e some suavemente
-    ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(0, H / 2 - 120, W, 70);
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, H / 2 - 120, W, 70);
     ctx.font = "40px Georgia"; ctx.fillStyle = a.cor;
     ctx.fillText(a.txt, W / 2, H / 2 - 72);
     ctx.globalAlpha = 1;
   }
   if (jogo.t < 8) {
-    ctx.globalAlpha = Math.min(1, 8 - jogo.t) * 0.7;
-    ctx.font = "13px system-ui"; ctx.fillStyle = "#bbb"; ctx.textAlign = "right";
-    ctx.fillText("A/D mover · W pular · Shift esquivar · J atacar · F curar", W - 20, 30);
+    ctx.globalAlpha = Math.min(1, 8 - jogo.t) * 0.8;
+    ctx.font = "13px system-ui"; ctx.fillStyle = "#ddd"; ctx.textAlign = "right";
+    ctx.shadowColor = "#000"; ctx.shadowBlur = 3;
+    ctx.fillText("A/D mover · W pular · S descer · Shift esquivar · J atacar (no ar: mergulho) · F curar", W - 20, 30);
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
 }

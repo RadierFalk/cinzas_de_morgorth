@@ -1,63 +1,143 @@
-// A jogadora (sprite Girl_2): movimento, esquiva, chute, cura e dano recebido.
+// O cavaleiro (sprites da pasta person): movimento, esquiva, combo de 3 golpes, ataque mergulho,
+// cura, crítico na cabeça e dano recebido.
 import { estado, consumir, segurando, CHAO, caixa, sobrepoe, particulas, texto } from "./nucleo.js";
 import { desenharSprite, ciclo } from "./sprites.js";
+import { moverCorpo, sobrePlataforma } from "./mundo.js";
+import { efeito } from "./efeitos.js";
+import { som } from "./sons.js";
 
 export const P = {
   vel: 230, pulo: 560, grav: 1500,
   rolarVel: 430, rolarDur: 0.42, iframes: [0.04, 0.34],
-  ataqueDur: 0.42, ataqueAtivo: [0.12, 0.22], dano: 9, alcance: 66,
-  curarDur: 1.1, curarMomento: 0.65, curaQtd: 45,
-  custoAtaque: 18, custoRolar: 24, custoPulo: 8, regenEst: 42,
+  curarDur: 1.1, curarMomento: 0.65, curaQtd: 45, rezarDur: 1.3,
+  custoRolar: 24, custoPulo: 10, custoMergulho: 14, regenEst: 42,
+  janelaCombo: 0.4,   // depois de um golpe, quanto tempo dá para emendar o próximo
+  critico: 2,         // multiplicador do golpe na cabeça
+  variacao: 0.1,      // dano varia ±10%
 };
+
+// Combo de 3 golpes (quadros 0-19 da folha Attacks; os quadros 20-39 são os mesmos golpes espelhados).
+// altura: [topo, base] da área do golpe, medida a partir dos pés. ponto: altura da lâmina (decide o crítico).
+export const COMBO = [
+  { nome: "corte", preparo: 0.12, ativo: 0.1, recuperar: 0.2, dano: 10, alcance: 72, altura: [56, 8], ponto: 38, custo: 16, passo: 40,
+    quadros: { preparo: [0, 1, 2], ativo: [3], recuperar: [4, 5] } },
+  { nome: "estocada", preparo: 0.1, ativo: 0.1, recuperar: 0.22, dano: 11, alcance: 88, altura: [48, 24], ponto: 36, custo: 16, passo: 120,
+    quadros: { preparo: [9], ativo: [10, 11], recuperar: [12, 13] } },
+  { nome: "giro", preparo: 0.16, ativo: 0.12, recuperar: 0.32, dano: 17, alcance: 92, altura: [60, 4], ponto: 38, custo: 24, passo: 60,
+    quadros: { preparo: [14, 15], ativo: [16, 17], recuperar: [18, 19] } },
+];
+// Ataque no ar: desce com a espada para baixo. A ponta da espada passa pela cabeça de quem está embaixo.
+const MERGULHO = { dano: 14, velQueda: 650, impacto: 6, raioImpacto: 60, durImpacto: 0.3 };
 
 export function novaJogadora(x) {
   return {
-    x, y: CHAO, vx: 0, vy: 0, w: 24, h: 64, dir: 1, noChao: true,
+    x, y: CHAO, vx: 0, vy: 0, w: 24, h: 66, dir: 1, noChao: true,
     hp: 100, hpMax: 100, hpFantasma: 100, est: 100, estMax: 100, estDelay: 0, frascos: 3,
-    estado: "livre", tEstado: 0, invul: 0,
+    estado: "livre", tEstado: 0, invul: 0, semFolego: 0, janelaCombo: 0, proximoGolpe: 0, passo: 0,
   };
 }
 
-const gastar = (j, custo) => { j.est = Math.max(0, j.est - custo); j.estDelay = 0.55; };
 const mudar = (j, novo) => { j.estado = novo; j.tEstado = 0; };
+
+function gastar(j, custo) {
+  j.est = Math.max(0, j.est - custo);
+  j.estDelay = j.est === 0 ? 1.0 : 0.55;  // zerou o fôlego: demora mais para voltar a encher
+}
+
+// Só faz a ação se tiver fôlego SUFICIENTE para ela (antes bastava ter qualquer coisa acima de zero)
+function temFolego(j, custo) {
+  if (j.est >= custo) return true;
+  if (j.semFolego <= 0) som("sem_folego");
+  j.semFolego = 0.45;  // a barra pisca em vermelho
+  return false;
+}
 
 export function invulneravel(j) {
   return j.invul > 0 || j.estado === "morto" ||
     (j.estado === "rolar" && j.tEstado >= P.iframes[0] && j.tEstado <= P.iframes[1]);
 }
 
+/**
+ * Aplica um golpe da jogadora em todos os alvos dentro da área.
+ * Crítico: a lâmina (pontoY) passa pela cabeça do alvo (o quarto de cima do corpo).
+ */
+function golpear(j, area, pontoY, danoBase, jaAcertados) {
+  let acertou = false, critou = false;
+  for (const alvo of estado.jogo.alvos()) {
+    if (jaAcertados.has(alvo)) continue;
+    const c = caixa(alvo);
+    if (!sobrepoe(area, c)) continue;
+    const cabeca = c.y1 + (c.y2 - c.y1) * 0.28;
+    const critico = pontoY >= c.y1 - 14 && pontoY <= cabeca;
+    let dano = danoBase * (1 - P.variacao + Math.random() * 2 * P.variacao);
+    if (critico) dano *= P.critico;
+    jaAcertados.add(alvo);
+    alvo.ferir(Math.round(dano), (Math.max(area.x1, c.x1) + Math.min(area.x2, c.x2)) / 2, critico ? cabeca : pontoY, critico);
+    acertou = true; critou ||= critico;
+  }
+  if (acertou) som(critou ? "critico" : "acerto", j.x);
+  return acertou;
+}
+
 export function atualizarJogadora(dt) {
   const jogo = estado.jogo, j = jogo.jogador;
   j.tEstado += dt;
   if (j.invul > 0) j.invul -= dt;
+  if (j.semFolego > 0) j.semFolego -= dt;
+  if (j.janelaCombo > 0) j.janelaCombo -= dt;
   const mover = (segurando.has("direita") ? 1 : 0) - (segurando.has("esquerda") ? 1 : 0);
 
   switch (j.estado) {
     case "livre":
       j.vx = mover * P.vel;
       if (mover) j.dir = mover;
-      if (j.noChao && j.est > 0 && consumir("esquivar")) {
-        const dir = mover || j.dir;
-        mudar(j, "rolar"); j.rolarDir = dir; j.dir = dir; gastar(j, P.custoRolar);
-        const b = jogo.boss;  // só a luta contra o chefão registra a direção das esquivas
-        if (b) {
-          const lado = Math.sign(b.x - j.x) === dir ? "para_frente" : "para_tras";
-          jogo.log.esquivas[lado]++;
-          if (b.golpe) b.golpe.rolagens.push(lado);
+      if (j.noChao && consumir("esquivar")) {
+        if (temFolego(j, P.custoRolar)) {
+          const dir = mover || j.dir;
+          mudar(j, "rolar"); j.rolarDir = dir; j.dir = dir; gastar(j, P.custoRolar);
+          som("rolar", j.x);
+          const b = jogo.boss;  // só a luta contra o chefe registra a direção das esquivas
+          if (b) {
+            const lado = Math.sign(b.x - j.x) === dir ? "para_frente" : "para_tras";
+            jogo.log.esquivas[lado]++;
+            if (b.golpe) b.golpe.rolagens.push(lado);
+          }
         }
-      } else if (j.est > 0 && consumir("atacar")) {
-        mudar(j, "ataque"); j.acertou = false; j.contou = false; gastar(j, P.custoAtaque);
+      } else if (consumir("atacar")) {
+        if (!j.noChao) {
+          // No ar: ataque mergulho
+          if (temFolego(j, P.custoMergulho)) {
+            mudar(j, "mergulho"); gastar(j, P.custoMergulho);
+            j.acertados = new Set(); j.impacto = false;
+            j.vy = MERGULHO.velQueda; j.vx *= 0.3;
+            som("golpe", j.x);
+          }
+        } else {
+          const i = j.janelaCombo > 0 ? j.proximoGolpe : 0;  // emenda o combo se ainda estiver na janela
+          if (temFolego(j, COMBO[i].custo)) {
+            mudar(j, "ataque"); j.golpe = i; j.acertados = new Set(); j.contou = false; j.acertou = false;
+            gastar(j, COMBO[i].custo);
+            som("golpe", j.x);
+          }
+        }
       } else if (j.noChao && consumir("curar")) {
         if (j.frascos > 0) {
           mudar(j, "curar"); j.curou = false; j.frascos--;
           jogo.log.curas_hp_antes.push(Math.round(j.hp));
         } else {
           jogo.log.tentou_curar_sem_frasco++;
-          texto(j.x, j.y - 80, "Sem frascos", "#999");
+          texto(j.x, j.y - 90, "Sem frascos", "#999");
         }
-      } else if (j.noChao && j.est > 0 && consumir("pular")) {
-        j.vy = -P.pulo; j.noChao = false; gastar(j, P.custoPulo); jogo.log.pulos++;
+      } else if (j.noChao && consumir("pular")) {
+        if (temFolego(j, P.custoPulo)) {
+          j.vy = -P.pulo; j.noChao = false; gastar(j, P.custoPulo); jogo.log.pulos++;
+          som("pulo", j.x);
+        }
+      } else if (consumir("descer") && sobrePlataforma(j)) {
+        j.descendo = 0.25;  // atravessa a plataforma para baixo
       }
+      // Passos
+      if (j.noChao && mover && (j.passo -= dt) <= 0) { som("passo", j.x); j.passo = 0.3; }
       break;
 
     case "rolar":
@@ -66,27 +146,63 @@ export function atualizarJogadora(dt) {
       break;
 
     case "ataque": {
-      j.vx = j.tEstado < 0.1 ? j.dir * 90 : 0;
-      const [ini, fim] = P.ataqueAtivo;
-      if (!j.acertou && j.tEstado >= ini && j.tEstado <= fim) {
-        const golpe = { x1: j.dir > 0 ? j.x : j.x - P.alcance, x2: j.dir > 0 ? j.x + P.alcance : j.x, y1: j.y - 56, y2: j.y - 4 };
-        for (const alvo of jogo.alvos()) {
-          if (sobrepoe(golpe, caixa(alvo))) { j.acertou = true; alvo.ferir(P.dano, j.x + j.dir * 40, j.y - 34); }
-        }
+      const g = COMBO[j.golpe];
+      const ativo = j.tEstado >= g.preparo && j.tEstado < g.preparo + g.ativo;
+      j.vx = ativo ? j.dir * g.passo : 0;
+      if (ativo) {
+        const [topo, base] = g.altura;
+        const area = { x1: j.dir > 0 ? j.x : j.x - g.alcance, x2: j.dir > 0 ? j.x + g.alcance : j.x, y1: j.y - topo, y2: j.y - base };
+        if (golpear(j, area, j.y - g.ponto, g.dano, j.acertados)) j.acertou = true;
       }
-      if (!j.contou && j.tEstado > fim) { j.contou = true; jogo.log.ataques[j.acertou ? "acertos" : "erros"]++; }
-      if (j.tEstado >= P.ataqueDur) mudar(j, "livre");
+      if (!j.contou && j.tEstado >= g.preparo + g.ativo) { j.contou = true; jogo.log.ataques[j.acertou ? "acertos" : "erros"]++; }
+      if (j.tEstado >= g.preparo + g.ativo + g.recuperar) {
+        mudar(j, "livre");
+        j.janelaCombo = P.janelaCombo;
+        j.proximoGolpe = (j.golpe + 1) % COMBO.length;
+      }
       break;
     }
+
+    case "mergulho":
+      if (!j.impacto) {
+        j.vy = Math.max(j.vy, MERGULHO.velQueda);
+        // A ponta da espada fica abaixo dos pés: acertar alguém de cima = acertar a cabeça
+        golpear(j, { x1: j.x - 26, x2: j.x + 26, y1: j.y - 40, y2: j.y + 14 }, j.y + 4, MERGULHO.dano, j.acertados);
+        if (j.noChao) {
+          j.impacto = true; j.tEstado = 0; j.vx = 0;
+          jogo.tremor = Math.max(jogo.tremor, 5);
+          efeito("circulo", j.x, j.y - 8, { escala: 0.35, fps: 26 });
+          som("mergulho", j.x);
+          // Onda do impacto: dano pequeno em quem está perto, no chão
+          golpear(j, { x1: j.x - MERGULHO.raioImpacto, x2: j.x + MERGULHO.raioImpacto, y1: j.y - 40, y2: j.y }, j.y - 20, MERGULHO.impacto, j.acertados);
+        }
+      } else {
+        j.vx = 0;
+        if (j.tEstado >= MERGULHO.durImpacto) mudar(j, "livre");
+      }
+      break;
 
     case "curar":
       j.vx = mover * 50;
       if (!j.curou && j.tEstado >= P.curarMomento) {
         j.curou = true;
         j.hp = Math.min(j.hpMax, j.hp + P.curaQtd);
-        particulas(j.x, j.y - 34, "#e8c35a", 18, 120);
+        particulas(j.x, j.y - 34, "#e84a4a", 18, 120);
+        som("curar", j.x);
       }
       if (j.tEstado >= P.curarDur) mudar(j, "livre");
+      break;
+
+    case "rezar":
+      // Ajoelhado na fogueira
+      j.vx = 0;
+      if (j.tEstado >= P.rezarDur) mudar(j, "livre");
+      break;
+
+    case "petrificada":
+      // Olhar da Górgona: virou pedra por um instante e não consegue agir
+      j.vx = 0;
+      if (j.tEstado >= j.duracaoPedra) { mudar(j, "livre"); particulas(j.x, j.y - 34, "#9a968a", 16, 160); }
       break;
 
     case "atingido":
@@ -99,17 +215,18 @@ export function atualizarJogadora(dt) {
       break;
   }
 
-  // Física
-  j.vy += P.grav * dt;
-  j.x += j.vx * dt;
-  j.y += j.vy * dt;
-  if (j.y >= CHAO) { j.y = CHAO; j.vy = 0; j.noChao = true; } else j.noChao = false;
+  // Física (chão, plataformas e obstáculos)
+  if (j.descendo > 0) j.descendo -= dt;
+  moverCorpo(j, dt, P.grav);
 
-  // Fôlego (stamina)
+  // Fôlego (stamina): só enche parado, andando ou curando, e depois de uma pausa
   if (j.estDelay > 0) j.estDelay -= dt;
-  else if (j.estado !== "rolar" && j.estado !== "ataque") j.est = Math.min(j.estMax, j.est + P.regenEst * dt);
+  else if (!["rolar", "ataque", "mergulho"].includes(j.estado)) j.est = Math.min(j.estMax, j.est + P.regenEst * dt);
   j.hpFantasma = Math.max(j.hp, j.hpFantasma - 30 * dt);
 }
+
+/** Ajoelha na fogueira (chamado ao acendê-la). */
+export function rezar(j) { mudar(j, "rezar"); j.vx = 0; }
 
 export function ferirJogadora(dano, origem, empurrao) {
   const jogo = estado.jogo, j = jogo.jogador;
@@ -121,66 +238,64 @@ export function ferirJogadora(dano, origem, empurrao) {
   j.vx = empurrao * 260; j.vy = -220; j.invul = 0.45;
   jogo.tremor = 10; jogo.hitstop = 0.08;
   particulas(j.x, j.y - 34, "#c0392b", 14);
-  texto(j.x, j.y - 80, `-${dano}`, "#e74c3c");
+  texto(j.x, j.y - 90, `-${dano}`, "#e74c3c");
+  som("ferida", j.x);
   if (j.hp <= 0) {
     j.hp = 0; mudar(j, "morto");
     jogo.log.golpe_final = origem;
+    som("morte");
     jogo.terminar("morte");
   }
   return true;
 }
 
-// Quadros da folha Attack (chute): 3-5 preparo, 6 = perna esticada (o momento do dano), 7-8 retorno
-function quadroDoChute(t) {
-  const [ini, fim] = P.ataqueAtivo;
-  if (t < ini) return 3 + Math.floor((t / ini) * 3);
-  if (t <= fim) return 6;
-  return Math.min(8, 7 + Math.floor((t - fim) / 0.1));
+/** Golpe que petrifica (olhar da Górgona): causa dano e prende a jogadora por alguns instantes. */
+export function petrificar(dano, origem, duracao) {
+  const j = estado.jogo.jogador;
+  if (!ferirJogadora(dano, origem, 0) || j.estado === "morto") return false;
+  mudar(j, "petrificada");
+  j.duracaoPedra = duracao; j.vx = 0; j.vy = 0; j.invul = 0;
+  texto(j.x, j.y - 106, "PETRIFICADA", "#b8b4a6");
+  som("petrificada", j.x);
+  return true;
+}
+
+// ===================== Desenho =====================
+const pela = (lista, t, dur) => lista[Math.min(lista.length - 1, Math.floor((t / dur) * lista.length))];
+
+function quadroJogadora(j, t) {
+  switch (j.estado) {
+    case "livre":
+      if (!j.noChao) return ["pulo", j.vy < -250 ? 1 : j.vy < -60 ? 2 : j.vy < 120 ? 3 : j.vy < 300 ? 5 : 6];
+      return Math.abs(j.vx) > 10 ? ["correr", ciclo(t, 14, 8)] : ["parado", ciclo(t, 8, 8)];
+    case "rolar": return ["rolar", pela([0, 1, 2, 3], j.tEstado, P.rolarDur)];
+    case "ataque": {
+      const g = COMBO[j.golpe], q = g.quadros;
+      if (j.tEstado < g.preparo) return ["ataque", pela(q.preparo, j.tEstado, g.preparo)];
+      if (j.tEstado < g.preparo + g.ativo) return ["ataque", pela(q.ativo, j.tEstado - g.preparo, g.ativo)];
+      return ["ataque", pela(q.recuperar, j.tEstado - g.preparo - g.ativo, g.recuperar)];
+    }
+    case "mergulho": return ["mergulho", j.impacto ? pela([3, 4, 5, 6], j.tEstado, MERGULHO.durImpacto) : ciclo(t, 14, 3)];
+    case "curar": return ["curar", pela([0, 1, 2, 3, 4, 5, 6, 7], j.tEstado, P.curarDur)];
+    case "rezar": return ["rezar", pela([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], j.tEstado, P.rezarDur)];
+    case "atingido": return ["ferido", pela([0, 1, 2], j.tEstado, 0.38)];
+    case "petrificada": return ["ferido", 1];
+    case "morto": return ["morte", Math.min(3, Math.floor(j.tEstado * 6))];
+  }
+  return ["parado", 0];
 }
 
 export function desenharJogadora(ctx, j, t) {
-  let anim = "parado", q = ciclo(t, 7, 7), rot = 0, alpha = 1, vermelho = 0;
-  switch (j.estado) {
-    case "livre":
-      if (!j.noChao) { anim = "ataque"; q = 4; }                      // joelho erguido = pose de pulo
-      else if (Math.abs(j.vx) > 10) { anim = "andar"; q = ciclo(t, 16, 12); }
-      break;
-    case "rolar": {
-      // Não há animação de rolagem na folha: a corrida girando + rastro fazem o papel
-      anim = "andar"; q = ciclo(t, 30, 12);
-      rot = (j.tEstado / P.rolarDur) * Math.PI * 2 * j.rolarDir;
-      for (let i = 1; i <= 2; i++) {
-        desenharSprite(ctx, "garota", anim, q, j.x - j.vx * 0.03 * i, j.y, { dir: j.dir, rot: rot - 0.5 * i * j.rolarDir, alpha: 0.25 / i });
-      }
-      break;
-    }
-    case "ataque": anim = "ataque"; q = quadroDoChute(j.tEstado); break;
-    case "curar": anim = "falar"; q = ciclo(j.tEstado, 8, 6); break;
-    case "atingido": anim = "defesa"; q = 0; vermelho = Math.max(0, 1 - j.tEstado / 0.3); break;
-    case "morto":
-      anim = "defesa"; q = 1;
-      rot = -j.dir * Math.min(1, j.tEstado * 2) * (Math.PI / 2);
-      alpha = Math.max(0.35, 1 - j.tEstado * 0.3);
-      break;
+  const [anim, q] = quadroJogadora(j, t);
+  let alpha = 1;
+  if (j.invul > 0 && !["morto", "atingido", "petrificada"].includes(j.estado) && Math.floor(t * 20) % 2) alpha = 0.45;
+  if (j.estado === "rolar") {
+    // Rastro da rolagem
+    for (let i = 1; i <= 2; i++) desenharSprite(ctx, "cavaleiro", anim, q, j.x - j.vx * 0.03 * i, j.y, { dir: j.dir, alpha: 0.2 / i });
   }
-  if (j.invul > 0 && j.estado !== "morto" && j.estado !== "atingido" && Math.floor(t * 20) % 2) alpha *= 0.45;
-  desenharSprite(ctx, "garota", anim, q, j.x, j.y, { dir: j.dir, rot, alpha, vermelho });
-
-  // Brilho dourado do frasco
-  if (j.estado === "curar") {
-    ctx.save();
-    ctx.fillStyle = "#e8c35a"; ctx.shadowColor = "#e8c35a"; ctx.shadowBlur = 16;
-    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 12);
-    ctx.beginPath(); ctx.arc(j.x + j.dir * 6, j.y - 44, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }
-  // Rastro do chute
-  if (j.estado === "ataque" && j.tEstado >= P.ataqueAtivo[0] && j.tEstado <= P.ataqueAtivo[1] + 0.05) {
-    ctx.save();
-    ctx.strokeStyle = "rgba(245,240,225,0.6)"; ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.arc(j.x + j.dir * 10, j.y - 34, 46, j.dir > 0 ? -0.9 : Math.PI - 0.6, j.dir > 0 ? 0.6 : Math.PI + 0.9);
-    ctx.stroke();
-    ctx.restore();
-  }
+  desenharSprite(ctx, "cavaleiro", anim, q, j.x, j.y, {
+    dir: j.dir, alpha,
+    vermelho: j.estado === "atingido" ? Math.max(0, 1 - j.tEstado / 0.3) : 0,
+    pedra: j.estado === "petrificada" ? 0.85 : 0,
+  });
 }

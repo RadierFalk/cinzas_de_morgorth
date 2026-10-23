@@ -39,7 +39,12 @@ elif MODELO.startswith("qwen3"):
 else:
     EXTRAS = {}
 
-MENTE_DO_BOSS = """Você é a mente de Morvath, o Guardião Esquecido, chefe de um jogo souls-like 2D.
+PERSONAS = {
+    "minotauro": "Morvath, o Guardião Esquecido, um minotauro com um machado enorme que guarda as ruínas",
+    "gorgona": "Medrah, a Górgona, meio mulher, meio serpente, que transforma viajantes em estátuas no seu salão",
+}
+
+MENTE_DO_BOSS = """Você é a mente de {persona}, chefe de um jogo souls-like 2D.
 Depois de cada luta você recebe o relatório do combate. Seu trabalho:
 1. Entender como o jogador luta (use consultar_historico_lutas e, se precisar, consultar_golpes_do_boss).
 2. Chamar definir_estrategia_boss UMA vez para adaptar a próxima luta aos hábitos do jogador.
@@ -47,7 +52,7 @@ Depois de cada luta você recebe o relatório do combate. Seu trabalho:
 3. Quando identificar um hábito marcante do jogador que ainda NÃO esteja em "O que você já sabe",
    chame salvar_memoria (no máximo uma vez por luta).
 4. Responder SOMENTE com um JSON: {"fala_boss": "...", "dica": "..."}
-   - fala_boss: o que Morvath diz no início da próxima luta. 1 ou 2 frases, tom sombrio e poético,
+   - fala_boss: o que você diz no início da próxima luta. 1 ou 2 frases, tom sombrio e poético,
      citando algo concreto que o jogador fez (ex.: sempre rola para trás, cura com pouca vida).
    - dica: frase curta e útil, como uma mensagem deixada no chão por outro viajante.
      Baseie-se SEMPRE no campo "como_evitar" do histórico; não invente mecânicas.
@@ -63,11 +68,20 @@ SALVAR_MEMORIA = {"type": "function", "function": {
 }}
 
 DICAS_PADRAO = {
-    "combo1": "Não fique colado nele.", "combo2": "O combo não termina no segundo golpe.",
-    "combo3": "O terceiro golpe tarda. Espere-o.", "investida": "Quando ele recua o machado, role na direção dele.",
-    "salto": "Ele salta onde você estará, não onde está.", "onda": "Pule a onda de choque.",
-    "reverso": "Rolar por dentro dele tem um preço.",
+    "minotauro": {
+        "combo1": "Não fique colado nele.", "combo2": "O combo não termina no segundo golpe.",
+        "combo3": "O terceiro golpe tarda. Espere-o.", "investida": "Quando ele recua o machado, role na direção dele.",
+        "especial": "Ele salta onde você estará, não onde está.", "onda": "Pule a onda de choque.",
+        "reverso": "Rolar por dentro dele tem um preço.",
+    },
+    "gorgona": {
+        "combo1": "A cauda alcança mais longe do que parece.", "combo2": "São três chicotadas, não duas.",
+        "combo3": "A terceira chicotada tarda. Espere-a.", "investida": "Quando ela se enrola, o bote vem.",
+        "especial": "Não encare o olhar: pule-o ou atravesse-o rolando.", "reverso": "Rolar por dentro dela tem um preço.",
+    },
 }
+# Campos que o app preenche sozinho: o modelo nunca vê nem escolhe (não mexe no boss de outro jogador)
+CAMPOS_ESCONDIDOS = {"jogador_id", "chefe"}
 
 
 @asynccontextmanager
@@ -78,19 +92,20 @@ async def lifespan(app: FastAPI):
     async with stdio_client(servidor) as (leitura, escrita), ClientSession(leitura, escrita) as mcp:
         await mcp.initialize()
         app.state.mcp = mcp
-        app.state.tools = [converter_tool(t) for t in (await mcp.list_tools()).tools]
+        convertidas = [converter_tool(t) for t in (await mcp.list_tools()).tools]
+        app.state.escondidos = {c["function"]["name"]: c.pop("escondidos") for c in convertidas}
+        app.state.tools = convertidas
         yield
 
 
 def converter_tool(t) -> dict:
-    """Converte uma tool do MCP para o formato do Groq, ESCONDENDO o jogador_id.
-
-    O app preenche o jogador_id sozinho: assim o modelo não consegue mexer no boss de outro jogador.
-    """
+    """Converte uma tool do MCP para o formato do Ollama, ESCONDENDO jogador_id e chefe."""
     schema = copy.deepcopy(t.input_schema)
-    schema.get("properties", {}).pop("jogador_id", None)
-    schema["required"] = [r for r in schema.get("required", []) if r != "jogador_id"]
-    return {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": schema}}
+    for campo in CAMPOS_ESCONDIDOS:
+        schema.get("properties", {}).pop(campo, None)
+    schema["required"] = [r for r in schema.get("required", []) if r not in CAMPOS_ESCONDIDOS]
+    return {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": schema},
+            "escondidos": [c for c in CAMPOS_ESCONDIDOS if c in t.input_schema.get("properties", {})]}
 
 
 app = FastAPI(lifespan=lifespan)
@@ -148,37 +163,46 @@ def sair(request: Request, response: Response):
 
 @app.get("/api/estado")
 def estado(u: dict = Depends(usuario_logado)):
-    """Tudo que o navegador precisa para começar uma luta."""
-    return {"usuario": u["usuario"], "fogueira_boss": db.fogueira_acesa(u["id"]),
-            **db.estado_boss(u["id"]), **db.placar(u["id"])}
+    """Tudo que o navegador precisa: em que cena a campanha está e o estado de cada chefe."""
+    chefes = {c: {**db.estado_boss(u["id"], c), **db.placar(u["id"], c)} for c in db.CHEFES}
+    return {"usuario": u["usuario"], "cena": db.cena_atual(u["id"]), "chefes": chefes}
 
 
-@app.post("/api/fogueira")
-def fogueira(u: dict = Depends(usuario_logado)):
-    """Chamado quando o jogador acende a fogueira no fim da fase."""
-    db.acender_fogueira(u["id"])
-    return {"ok": True}
+class Progresso(BaseModel):
+    cena: str
 
 
-@app.post("/api/luta")
-async def fim_de_luta(log: dict, u: dict = Depends(usuario_logado)):
-    """Recebe o relatório da luta, deixa o agente reprogramar o boss e devolve fala + dica."""
+@app.post("/api/progresso")
+def progresso(p: Progresso, u: dict = Depends(usuario_logado)):
+    """Salva o ponto de retorno (fogueira acesa ou chefe vencido)."""
+    if p.cena not in db.CENAS:
+        raise HTTPException(400, "Cena desconhecida")
+    db.salvar_cena(u["id"], p.cena)
+    return {"cena": p.cena}
+
+
+@app.post("/api/luta/{chefe}")
+async def fim_de_luta(chefe: str, log: dict, u: dict = Depends(usuario_logado)):
+    """Recebe o relatório da luta, deixa o agente reprogramar o chefe e devolve fala + dica."""
+    if chefe not in db.CHEFES:
+        raise HTTPException(404, "Chefe desconhecido")
     resultado = "vitoria" if log.get("resultado") == "vitoria" else "morte"
-    db.salvar_luta(u["id"], resultado, log)
+    db.salvar_luta(u["id"], chefe, resultado, log)
     try:
-        fala, dica, usadas = await pensar(u["id"], log)
+        fala, dica, usadas = await pensar(u["id"], chefe, log)
         erro = None
     except Exception as e:
         # Se a IA falhar, o jogo continua com a estratégia atual
-        fala, dica, usadas, erro = db.estado_boss(u["id"])["fala"], dica_padrao(log), [], str(e)
-    db.salvar_fala(u["id"], fala)
+        fala, dica, usadas, erro = db.estado_boss(u["id"], chefe)["fala"], dica_padrao(chefe, log), [], str(e)
+    db.salvar_fala(u["id"], chefe, fala)
     return {"fala": fala, "dica": dica, "ferramentas": usadas, "erro": erro,
-            "estrategia": db.estado_boss(u["id"])["estrategia"], **db.placar(u["id"])}
+            "estrategia": db.estado_boss(u["id"], chefe)["estrategia"], **db.placar(u["id"], chefe)}
 
 
-async def pensar(usuario_id: int, log: dict) -> tuple[str, str, list[str]]:
+async def pensar(usuario_id: int, chefe: str, log: dict) -> tuple[str, str, list[str]]:
     """Loop do agente: o modelo chama ferramentas até devolver o JSON final."""
-    sistema = MENTE_DO_BOSS
+    # replace, e não format: o prompt tem um exemplo de JSON com chaves { } que o format tentaria interpretar
+    sistema = MENTE_DO_BOSS.replace("{persona}", PERSONAS[chefe])
     if fatos := db.fatos(usuario_id):
         sistema += "\n\nO que você já sabe sobre este jogador:\n" + "\n".join(f"- {f}" for f in fatos)
 
@@ -201,27 +225,29 @@ async def pensar(usuario_id: int, log: dict) -> tuple[str, str, list[str]]:
                               {"role": "user", "content": 'Responda agora SOMENTE o JSON {"fala_boss": "...", "dica": "..."}.'}]
                 r = await ollama.chat(model=MODELO, messages=mensagens, format="json", **EXTRAS)
                 final = extrair_json(r.message.content or "")
-            return final.get("fala_boss") or db.FALA_INICIAL, final.get("dica") or dica_padrao(log), usadas
+            fala_padrao = db.CHEFES[chefe]
+            return final.get("fala_boss") or fala_padrao, final.get("dica") or dica_padrao(chefe, log), usadas
 
         # A mensagem com os pedidos de ferramenta precisa voltar no histórico
         mensagens.append(msg)
         for tc in msg.tool_calls:
             usadas.append(tc.function.name)
             # No Ollama os argumentos já chegam como dicionário (no Groq/OpenAI vinham como texto JSON)
-            resultado = await executar_ferramenta(usuario_id, tc.function.name, dict(tc.function.arguments or {}))
+            args = dict(tc.function.arguments or {})
+            resultado = await executar_ferramenta(usuario_id, chefe, tc.function.name, args)
             mensagens.append({"role": "tool", "tool_name": tc.function.name, "content": resultado})
 
-    return db.FALA_INICIAL, dica_padrao(log), usadas
+    return db.CHEFES[chefe], dica_padrao(chefe, log), usadas
 
 
-async def executar_ferramenta(usuario_id: int, nome: str, args: dict) -> str:
+async def executar_ferramenta(usuario_id: int, chefe: str, nome: str, args: dict) -> str:
     if nome == "salvar_memoria":
         db.salvar_fato(usuario_id, args["fato"])
         return "Memória salva."
-    # Ferramentas do MCP: o jogador_id é preenchido aqui, nunca pelo modelo
-    nomes_com_jogador = {"consultar_historico_lutas", "definir_estrategia_boss"}
-    if nome in nomes_com_jogador:
-        args["jogador_id"] = usuario_id
+    # Ferramentas do MCP: jogador_id e chefe são preenchidos aqui, nunca pelo modelo
+    preenchidos = {"jogador_id": usuario_id, "chefe": chefe}
+    for campo in app.state.escondidos.get(nome, []):
+        args[campo] = preenchidos[campo]
     resultado = await app.state.mcp.call_tool(nome, args)
     return "\n".join(c.text for c in resultado.content if hasattr(c, "text"))
 
@@ -233,10 +259,10 @@ def extrair_json(texto: str) -> dict:
         return {}
 
 
-def dica_padrao(log: dict) -> str:
+def dica_padrao(chefe: str, log: dict) -> str:
     dano = log.get("dano_recebido") or {}
     pior = max(dano, key=dano.get) if dano else None
-    return DICAS_PADRAO.get(pior, "Paciência. Observe antes de atacar.")
+    return DICAS_PADRAO[chefe].get(pior, "Paciência. Observe antes de atacar.")
 
 
 @app.get("/")

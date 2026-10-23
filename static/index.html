@@ -22,28 +22,31 @@
   #erro { color: #b33; min-height: 20px; margin: 0; font-size: 14px; }
 
   #area { width: min(960px, 100%); }
-  .topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; color: #8a8270; }
+  .topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; color: #8a8270; }
   .topo button { padding: 4px 10px; font-size: 12px; }
   .palco { position: relative; }
   canvas { width: 100%; aspect-ratio: 16 / 9; display: block; background: #000; outline: none; }
 
-  /* Painel entre lutas */
-  #painel { position: absolute; inset: 0; background: rgba(5,5,8,0.88); display: flex; flex-direction: column;
-    align-items: center; justify-content: center; text-align: center; padding: 24px; gap: 14px; }
+  /* Painel entre cenas */
+  #painel { position: absolute; inset: 0; background: rgba(5,5,8,0.86); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 24px; gap: 14px; overflow-y: auto; }
   #painel .pensando { font-style: italic; color: #8a8270; animation: pulsar 1.6s infinite; }
   @keyframes pulsar { 50% { opacity: 0.4; } }
-  .fala { font-size: clamp(16px, 2.4vw, 22px); font-style: italic; max-width: 680px; color: #efe4c8; }
-  .dica { border: 1px solid #3a3528; padding: 8px 16px; color: var(--ouro); font-size: 15px; }
+  .titulo-cena { letter-spacing: 4px; color: var(--ouro); font-size: clamp(18px, 3vw, 28px); margin: 0; }
+  .fala { font-size: clamp(16px, 2.4vw, 22px); font-style: italic; max-width: 680px; color: #efe4c8; margin: 0; }
+  .dica { border: 1px solid #3a3528; padding: 8px 16px; color: var(--ouro); font-size: 15px; margin: 0; }
   .dica::before { content: "✦ Mensagem no chão: "; color: #8a8270; }
   .mudancas { font-family: system-ui, sans-serif; font-size: 13px; color: #9a927e; max-width: 640px; line-height: 1.6; }
   .mudancas b { color: #e0b85a; font-weight: 600; }
-  .ferramentas { font-family: monospace; font-size: 12px; color: #6f6a5d; }
-  #voltar { color: #6f6a5d; font-size: 13px; }
+  .ferramentas { font-family: monospace; font-size: 12px; color: #6f6a5d; margin: 0; }
+  .trilha { font-family: system-ui, sans-serif; font-size: 12px; color: #6f6a5d; letter-spacing: 2px; }
+  .trilha .feita { color: #8a8270; } .trilha .agora { color: var(--ouro); }
+  #painel a { color: #6f6a5d; font-size: 13px; }
 </style>
 </head>
 <body>
   <h1>CINZAS DE MORVATH</h1>
-  <p class="sub">O guardião aprende com cada uma de suas mortes.</p>
+  <p class="sub">Os guardiões aprendem com cada uma de suas mortes.</p>
 
   <form id="login">
     <input id="usuario" placeholder="Nome" autocomplete="username">
@@ -58,7 +61,11 @@
   <div id="area" class="hidden">
     <div class="topo">
       <span id="info"></span>
-      <button id="sair">Sair</button>
+      <span>
+        <button id="som" title="Tecla M">♪ música</button>
+        <button id="efeitos" title="Tecla N">🔊 efeitos</button>
+        <button id="sair">Sair</button>
+      </span>
     </div>
     <div class="palco">
       <canvas id="tela" width="960" height="540" tabindex="0"></canvas>
@@ -67,12 +74,21 @@
   </div>
 
 <script type="module">
-import { iniciarLuta, iniciarFase, carregarSprites } from "/static/jogo.js";
+import { iniciarLuta, iniciarFase, carregarSprites, carregarSons, nomeDoChefe } from "/static/jogo.js";
+import { tocar, alternarMudo, estaMudo } from "/static/musica.js";
+import { som, liberarAudio, alternarEfeitos, efeitosMudos } from "/static/sons.js";
+
+// A campanha: fases e chefes em sequência (a mesma ordem de db.CENAS no servidor)
+const CENAS = ["ruinas", "minotauro", "floresta", "cripta", "gorgona"];
+const CHEFES = ["minotauro", "gorgona"];
+const NOMES = { ruinas: "Ruínas de Morvath", minotauro: "Morvath, o Guardião", floresta: "Floresta dos Sussurros",
+  cripta: "Cripta dos Petrificados", gorgona: "Medrah, a Górgona" };
+const GOLPES = { minotauro: "Combo / Investida / Salto", gorgona: "Chicote / Bote / Olhar" };
 
 const $ = (id) => document.getElementById(id);
-let estado = null;  // estratégia atual, fala, placar, fogueira
+let estado = null;       // cena atual + estratégia, fala e placar de cada chefe
 let acaoDoBotao = null;  // o que o botão principal do painel (e o Enter) faz
-const sprites = carregarSprites();  // começa a baixar as imagens já no login
+const recursos = Promise.all([carregarSprites(), carregarSons()]);  // começa a baixar imagens e sons já no login
 
 async function api(caminho, corpo) {
   const res = await fetch(caminho, corpo === undefined ? {} : {
@@ -83,97 +99,159 @@ async function api(caminho, corpo) {
   return dados;
 }
 
+const proxima = (cena) => CENAS[CENAS.indexOf(cena) + 1] || null;
+
 function atualizarInfo() {
-  $("info").textContent = `${estado.usuario} · mortes: ${estado.mortes} · vitórias: ${estado.vitorias}`;
+  const mortes = CHEFES.reduce((s, c) => s + estado.chefes[c].mortes, 0);
+  $("info").textContent = `${estado.usuario} · ${NOMES[estado.cena]} · mortes em chefes: ${mortes}`;
 }
 
+function trilha(atual) {
+  const i = CENAS.indexOf(atual);
+  return `<div class="trilha">${CENAS.map((c, k) =>
+    `<span class="${k < i ? "feita" : k === i ? "agora" : ""}">${k === i ? "▶ " : ""}${NOMES[c]}</span>`).join(" · ")}</div>`;
+}
+
+async function salvarCena(cena) {
+  estado.cena = cena;
+  atualizarInfo();
+  await api("/api/progresso", { cena }).catch(() => {});
+}
+
+// ===================== Telas =====================
 async function abrirJogo() {
   estado = await api("/api/estado");
   $("login").classList.add("hidden");
   $("area").classList.remove("hidden");
   atualizarInfo();
   mostrarPainel(`<p class="pensando">Carregando...</p>`);
-  await sprites;
+  await recursos;
   telaInicial();
 }
 
 function telaInicial() {
-  if (estado.fogueira_boss) {
-    // Fogueira já acesa: começa direto no chefão
-    mostrarPainel(`<p class="fala">“${esc(estado.fala)}”</p>
-      <button id="acao">Enfrentar Morvath</button>
-      <a href="#" id="voltar">recomeçar pelas ruínas</a>`, lutarBoss);
-  } else {
-    mostrarPainel(`<p class="fala">Atravesse as Ruínas de Morvath. Acenda a fogueira antes da névoa:
-      é ali que você voltará a cada morte.</p><button id="acao">Começar</button>`, jogarFase);
-  }
+  const cena = estado.cena, chefe = CHEFES.includes(cena);
+  mostrarPainel(`
+    <p class="titulo-cena">${NOMES[cena].toUpperCase()}</p>
+    ${chefe ? `<p class="fala">“${esc(estado.chefes[cena].fala)}”</p>` : ""}
+    ${trilha(cena)}
+    <button id="acao">${cena === "ruinas" ? "Começar" : "Continuar"}</button>
+    ${cena !== "ruinas" ? `<a href="#" id="recomecar">recomeçar a jornada do início</a>` : ""}`, () => jogar(cena));
+  if ($("recomecar")) $("recomecar").onclick = async (e) => { e.preventDefault(); await salvarCena("ruinas"); telaInicial(); };
 }
 
-function jogarFase() {
+function jogar(cena) {
   $("painel").classList.add("hidden");
-  iniciarFase({
-    fogueiraAcesa: estado.fogueira_boss,
-    aoMorrer: () => mostrarPainel(`<p class="fala">As ruínas reclamam mais uma alma.</p>
-      <button id="acao">Tentar novamente</button>`, jogarFase),
-    aoAcenderFogueira: () => { estado.fogueira_boss = true; api("/api/fogueira", {}).catch(() => {}); },
-    aoChegarNoBoss: lutarBoss,
-  });
+  tocar(cena);
+  if (CHEFES.includes(cena)) lutarContra(cena);
+  else jogarFase(cena);
 }
 
-function lutarBoss() {
-  $("painel").classList.add("hidden");
-  iniciarLuta(estado.estrategia, estado.fala, aoFimDaLuta);
+let fogueiraDoMeio = null;  // { cena, x }: morrer depois de acendê-la recomeça dali (vale nesta sessão)
+
+function jogarFase(cena) {
+  const inicio = fogueiraDoMeio?.cena === cena ? fogueiraDoMeio.x : 120;
+  iniciarFase(cena, {
+    aoMorrer: () => mostrarPainel(`<p class="titulo-cena">${NOMES[cena].toUpperCase()}</p>
+      <p class="fala">As sombras reclamam mais uma alma.</p>
+      <button id="acao">${fogueiraDoMeio?.cena === cena ? "Voltar à fogueira" : "Tentar novamente"}</button>`, () => jogar(cena)),
+    aoAcenderFogueira: (x, final) => {
+      if (final) { fogueiraDoMeio = null; salvarCena(proxima(cena)); }  // fogueira do fim: salva o progresso no servidor
+      else fogueiraDoMeio = { cena, x };
+    },
+    aoAtravessarNevoa: () => jogar(proxima(cena)),
+  }, inicio);
 }
 
-async function aoFimDaLuta(log) {
+function lutarContra(chefe) {
+  const c = estado.chefes[chefe];
+  iniciarLuta(chefe, c.estrategia, c.fala, (log) => aoFimDaLuta(chefe, log));
+}
+
+async function aoFimDaLuta(chefe, log) {
+  const nome = nomeDoChefe(chefe).split(",")[0];
   mostrarPainel(`<p class="pensando">${log.resultado === "morte"
-    ? "Morvath reflete sobre a sua queda..." : "Das cinzas, Morvath se reergue, e se lembra..."}</p>`);
-  const antes = estado.estrategia;
+    ? `${nome} reflete sobre a sua queda...` : `Das cinzas, ${nome} se lembra de você...`}</p>`);
+  const antes = estado.chefes[chefe].estrategia;
+  let r;
   try {
-    const r = await api("/api/luta", log);
-    estado = { ...estado, estrategia: r.estrategia, fala: r.fala, mortes: r.mortes, vitorias: r.vitorias };
-    atualizarInfo();
-    mostrarPainel(`
-      <p class="fala">“${esc(r.fala)}”</p>
-      <p class="dica">${esc(r.dica)}</p>
-      <div class="mudancas">${descreverMudancas(antes, r.estrategia)}</div>
-      ${r.ferramentas.length ? `<p class="ferramentas">ferramentas usadas pela IA: ${r.ferramentas.join(" → ")}</p>` : ""}
-      ${r.erro ? `<p class="ferramentas">a IA falhou (${esc(r.erro).slice(0, 120)}); o boss mantém a estratégia</p>` : ""}
-      <button id="acao">${log.resultado === "morte" ? "Tentar novamente" : "Enfrentar de novo"}</button>`, lutarBoss);
+    r = await api(`/api/luta/${chefe}`, log);
+    Object.assign(estado.chefes[chefe], { estrategia: r.estrategia, fala: r.fala, mortes: r.mortes, vitorias: r.vitorias });
   } catch (err) {
-    mostrarPainel(`<p class="fala">${esc(err.message)}</p><button id="acao">Tentar novamente</button>`, lutarBoss);
+    r = { fala: err.message, dica: "", ferramentas: [], erro: null, estrategia: antes };
+  }
+
+  const relatorio = `
+    <p class="fala">“${esc(r.fala)}”</p>
+    ${r.dica ? `<p class="dica">${esc(r.dica)}</p>` : ""}
+    <div class="mudancas">${descreverMudancas(chefe, antes, r.estrategia)}</div>
+    ${r.ferramentas.length ? `<p class="ferramentas">ferramentas usadas pela IA: ${r.ferramentas.join(" → ")}</p>` : ""}
+    ${r.erro ? `<p class="ferramentas">a IA falhou (${esc(r.erro).slice(0, 120)}); o chefe mantém a estratégia</p>` : ""}`;
+
+  if (log.resultado === "morte") {
+    mostrarPainel(relatorio + `<button id="acao">Tentar novamente</button>`, () => jogar(chefe));
+    return;
+  }
+  // Vitória: libera a próxima cena (ou o fim da jornada)
+  const prox = proxima(chefe);
+  if (prox) {
+    await salvarCena(prox);
+    mostrarPainel(`<p class="titulo-cena">${nomeDoChefe(chefe).toUpperCase()} FOI DERROTADO</p>` + relatorio + trilha(prox) +
+      `<button id="acao">Seguir para ${NOMES[prox]}</button>`, () => jogar(prox));
+  } else {
+    tocar("vitoria");
+    som("vitoria");
+    mostrarPainel(`<p class="titulo-cena">A JORNADA TERMINOU</p>` + relatorio +
+      `<p class="fala">Os guardiões caíram. Mas eles se lembram de você.</p>
+      <button id="acao">Enfrentar ${nome} de novo</button>
+      <a href="#" id="recomecar">recomeçar a jornada do início</a>`, () => jogar(chefe));
+    $("recomecar").onclick = async (e) => { e.preventDefault(); await salvarCena("ruinas"); telaInicial(); };
   }
 }
 
-// Mostra em português o que a IA mudou no boss
-function descreverMudancas(a, n) {
+// Mostra em português o que a IA mudou no chefe
+function descreverMudancas(chefe, a, n) {
   const pct = (v) => Math.round(v * 100) + "%";
   const rolagem = { nenhuma: "não", para_tras: "persegue quem rola para trás", para_frente: "pune quem rola por dentro" };
+  const pesos = (p) => `${p.combo} / ${p.investida} / ${p.especial ?? p.salto}`;
   const itens = [
     ["Agressividade", pct(a.agressividade), pct(n.agressividade)],
     ["Atraso do 3º golpe", pct(a.atraso_terceiro_golpe), pct(n.atraso_terceiro_golpe)],
     ["Pune cura", a.punir_cura ? "sim" : "não", n.punir_cura ? "sim" : "não"],
     ["Pune esquiva", rolagem[a.punir_rolagem], rolagem[n.punir_rolagem]],
-    ["Combo / Investida / Salto", fmtPesos(a.pesos), fmtPesos(n.pesos)],
+    [GOLPES[chefe], pesos(a.pesos), pesos(n.pesos)],
   ];
   const mudou = itens.filter(([, x, y]) => x !== y).map(([nome, x, y]) => `${nome}: ${x} → <b>${y}</b>`);
   const motivo = n.motivo ? `<br><i>“${esc(n.motivo)}”</i>` : "";
   return mudou.length ? "O guardião se adaptou:<br>" + mudou.join("<br>") + motivo : "O guardião manteve a estratégia.";
 }
-const fmtPesos = (p) => `${p.combo} / ${p.investida} / ${p.salto}`;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 function mostrarPainel(html, acao = null) {
   $("painel").innerHTML = html;
   $("painel").classList.remove("hidden");
-  acaoDoBotao = acao;
-  if (acao) $("acao").onclick = acao;
-  if ($("voltar")) $("voltar").onclick = (e) => { e.preventDefault(); jogarFase(); };
+  acaoDoBotao = acao ? () => { som("clique"); acao(); } : null;
+  if (acao) $("acao").onclick = acaoDoBotao;
 }
 
-// Enter também aciona o botão principal quando o painel está aberto
+// ===================== Controles da página =====================
+function atualizarBotaoSom() {
+  $("som").textContent = estaMudo() ? "♪ mudo" : "♪ música";
+  $("efeitos").textContent = efeitosMudos() ? "🔇 efeitos" : "🔊 efeitos";
+}
+$("som").onclick = () => { alternarMudo(); atualizarBotaoSom(); };
+$("efeitos").onclick = () => { alternarEfeitos(); atualizarBotaoSom(); };
+atualizarBotaoSom();
+
+// Navegadores só liberam áudio depois de uma interação: o primeiro clique/tecla libera
+addEventListener("pointerdown", liberarAudio);
 addEventListener("keydown", (e) => {
+  liberarAudio();
+  // Enter aciona o botão principal do painel; M liga/desliga a música; N, os efeitos
   if (e.key === "Enter" && !$("painel").classList.contains("hidden") && acaoDoBotao) acaoDoBotao();
+  if ($("area").classList.contains("hidden")) return;
+  if (e.code === "KeyM") { alternarMudo(); atualizarBotaoSom(); }
+  if (e.code === "KeyN") { alternarEfeitos(); atualizarBotaoSom(); }
 });
 
 $("login").onsubmit = async (e) => {

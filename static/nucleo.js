@@ -11,7 +11,7 @@ export const estado = { jogo: null };
 const MAPA = {
   esquerda: ["KeyA", "ArrowLeft"], direita: ["KeyD", "ArrowRight"],
   pular: ["KeyW", "ArrowUp", "Space"], esquivar: ["ShiftLeft", "ShiftRight", "KeyK"],
-  atacar: ["KeyJ"], curar: ["KeyF"],
+  atacar: ["KeyJ"], curar: ["KeyF"], descer: ["KeyS", "ArrowDown"],
 };
 const BUFFER_S = 0.25;
 export const segurando = new Set();
@@ -50,4 +50,4 @@ export function particulas(x, y, cor, n, forca = 220) {
     estado.jogo.particulas.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, vida: 0.4 + Math.random() * 0.4, cor, tam: 2 + Math.random() * 3 });
   }
 }
-export function texto(x, y, txt, cor) { estado.jogo.textos.push({ x, y, txt, cor, vida: 0.9 }); }
+export function texto(x, y, txt, cor, tamanho = 18) { estado.jogo.textos.push({ x, y, txt, cor, tamanho, vida: 0.9 }); }

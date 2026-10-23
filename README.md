@@ -1,73 +1,96 @@
 # ⚔️ Cinzas de Morvath
 
-Souls-like 2D no navegador com um **boss que aprende com as suas mortes**.
+Souls-like 2D no navegador em que **os chefes aprendem com as suas mortes**.
 
-Atravesse as **Ruínas de Morvath** (esqueletos guerreiros, lanceiros e arqueiros), acenda a
-**fogueira** e atravesse a névoa para enfrentar **Morvath, o Guardião**, um minotauro com machado.
-Depois de acender a fogueira, as próximas tentativas começam direto no chefão.
+O combate é em tempo real e 100% código. Quando você morre (ou vence) contra um chefe, um
+**agente de IA** (Ollama) lê o relatório da luta, descobre seus hábitos e **reprograma o chefe**
+para a próxima tentativa, usando ferramentas expostas por um **servidor MCP**. Ele também lembra
+de você entre as sessões (a memória é compartilhada: a Górgona sabe o que o Minotauro aprendeu)
+e escreve a fala do chefe e uma dica.
 
-O combate é em tempo real e 100% código. Quando você morre (ou vence), um **agente de IA**
-(Ollama) lê o relatório da luta, descobre seus hábitos e **reprograma o boss** para a próxima
-tentativa, usando ferramentas expostas por um **servidor MCP**. Ele também lembra de você
-entre as sessões e escreve a fala do boss e uma dica.
+## A jornada
+
+| # | Cena | Cenário | O que tem |
+|---|---|---|---|
+| 1 | Ruínas de Morvath | Battleground 1 | esqueletos guerreiros, lanceiros e arqueiros; plataformas, caixas, pilares |
+| 2 | **Morvath, o Guardião** | Battleground 1 (pálido) | chefe minotauro com machado |
+| 3 | Floresta dos Sussurros | Battleground 3 | magos de fogo, do raio e errantes + esqueletos |
+| 4 | Cripta dos Petrificados | Battleground 4 | todos os inimigos, a fase mais longa |
+| 5 | **Medrah, a Górgona** | Battleground 2 | chefe górgona com olhar petrificante |
+
+- Cada fase tem uma **fogueira no meio** (morrer depois de acendê-la recomeça dali, nesta sessão) e uma
+  **no fim**, que salva o progresso no servidor. A névoa leva à próxima cena.
+- Vencer um chefe libera a cena seguinte. Morrer para um chefe recomeça a luta (com o chefe já adaptado).
 
 ## Controles
 
 | Tecla | Ação |
 |---|---|
 | A / D (ou setas) | mover |
-| W / Espaço | pular (desvia das ondas de choque) |
+| W / Espaço | pular (plataformas, ondas de choque, olhar da górgona, flechas) |
+| S / ↓ | descer da plataforma |
 | Shift (ou K) | rolar, invencível durante parte da rolagem |
-| J (ou clique) | atacar |
-| F | beber frasco (3 por luta) |
+| J (ou clique) | atacar (combo de 3 golpes); **no ar: ataque mergulho** |
+| F | beber frasco (3; as fogueiras recarregam) |
+| M / N | ligar/desligar a música / os efeitos sonoros |
+
+## Combate do cavaleiro
+
+- **Combo de 3 golpes**: corte (10), estocada (11, alcança mais longe) e giro (17, o finalizador).
+  Apertar de novo logo depois de um golpe emenda o próximo. O dano varia ±10% a cada golpe.
+- **Crítico na cabeça (dano ×2)**: quando a lâmina passa pela cabeça do alvo (o quarto de cima do corpo).
+  O jeito de conseguir é o **ataque mergulho**: pule e ataque no ar; o cavaleiro desce com a espada para
+  baixo e, se ela encontrar a cabeça, é crítico. Um crítico atravessa o escudo e sempre faz o inimigo cambalear.
+  Funciona nos chefes também (acerte a cabeça deles na descida).
+- **Fôlego**: cada ação só acontece se houver fôlego suficiente para ela (rolar 24, golpes 16/16/24,
+  mergulho 14, pulo 10). Se faltar, a barra pisca em vermelho. Zerar o fôlego atrasa a recarga.
+
+Os números ficam em `static/jogador.js` (`P`, `COMBO` e `MERGULHO`).
 
 ## Arquivos
 
 | Arquivo | O que faz |
 |---|---|
-| `static/jogo.js` | Cenas (fase e chefão), câmera, cenário com parallax, fogueira, névoa, HUD |
-| `static/jogador.js` | A jogadora: movimento, esquiva, chute, cura |
-| `static/boss.js` | O minotauro: máquina de estados do combate e relatório da luta |
-| `static/inimigos.js` | Esqueletos: perseguir, atacar, bloquear com escudo, postura, flechas |
-| `static/sprites.js` | Carrega as folhas de sprites e desenha os quadros (âncoras, flash de dano) |
+| `static/jogo.js` | Cenas (fase e chefe), câmera, fogueiras, névoa, HUD |
+| `static/fases.js` | **Layout das fases** (plataformas, obstáculos, inimigos) e arenas: edite aqui para criar fases |
+| `static/jogador.js` | O cavaleiro: movimento, esquiva, combo, mergulho, crítico, fôlego, cura |
+| `static/sons.js` | Efeitos sonoros (Web Audio): golpes, passos, magias, chefes, fogueira, vento ambiente |
+| `static/boss.js` | Os chefes: uma máquina de estados com um **perfil** por chefe |
+| `static/inimigos.js` | Esqueletos e magos: perseguir, atacar, bloquear, postura, projéteis, raio do céu |
+| `static/mundo.js` | Física com plataformas e blocos; desenho do chão, lajes, colunas e decoração (pasta objects) |
+| `static/efeitos.js` | Explosões e efeitos animados |
+| `static/sprites.js` | Carrega e desenha personagens, projéteis, efeitos e cenários em camadas (parallax) |
+| `static/musica.js` | Trilha sonora por cena, com transição suave |
 | `static/nucleo.js` | Teclado, utilidades e estado compartilhado |
-| `static/index.html` | Login, tela do jogo e painel entre lutas |
-| `app.py` | Servidor (FastAPI): login e o **agente** que analisa a luta |
-| `boss_mcp.py` | Servidor **MCP** com as ferramentas do agente |
-| `db.py` | SQLite (`souls.db`): usuários, sessões, lutas, estratégia do boss e memórias |
+| `static/index.html` | Login, tela do jogo e painéis entre cenas |
+| `app.py` | Servidor (FastAPI): login, progresso e o **agente** que analisa as lutas |
+| `boss_mcp.py` | Servidor **MCP** com as ferramentas do agente (golpes e "como evitar" de cada chefe) |
+| `db.py` | SQLite (`souls.db`): usuários, lutas e estratégia **por chefe**, progresso, memórias |
 
 ## Como a IA entra no jogo
 
 ```
-Luta em tempo real (jogo.js, sem IA)
+Luta em tempo real (sem IA)
   └─ registra o relatório: esquivas para frente/trás, HP ao curar, dano por golpe, golpe final...
-Você morre → POST /api/luta (app.py)
-  └─ Agente (Ollama) chama ferramentas:
-       consultar_historico_lutas   (MCP) → hábitos + "como evitar" cada golpe
+Você morre → POST /api/luta/{chefe}
+  └─ Agente (Ollama), com a persona do chefe, chama ferramentas:
+       consultar_historico_lutas   (MCP) → hábitos + "como evitar" cada golpe deste chefe
+       consultar_golpes_do_boss    (MCP) → o que cada golpe e parâmetro faz
        definir_estrategia_boss     (MCP) → agressividade, atraso do 3º golpe, punir cura/esquiva, pesos
-       salvar_memoria              (local) → hábito marcante, lembrado em todas as próximas lutas
-  └─ responde a fala do boss + uma dica
-Próxima luta: o boss usa a nova estratégia
+       salvar_memoria              (local) → hábito marcante, lembrado por todos os chefes
+  └─ responde a fala do chefe + uma dica
+Próxima luta: o chefe usa a nova estratégia
 ```
 
-Decisões importantes:
-
-- **A IA nunca controla o combate diretamente.** Ela só ajusta parâmetros entre lutas. A latência
-  do modelo não afeta o jogo, e se a IA falhar (por exemplo, com o Ollama desligado) o boss
-  continua com a estratégia anterior.
-- **As regras de justiça estão em código, não no prompt** (`definir_estrategia_boss`):
-  cada parâmetro muda no máximo 0,3 por luta, e após 3 derrotas seguidas o boss fica mais fácil.
-  Nos testes, a IA ignorou essa regra quando ela estava só no prompt.
-- **O `jogador_id` é escondido do modelo.** O `app.py` remove esse campo das ferramentas e o
-  preenche sozinho, então a IA não consegue mexer no boss de outro jogador.
+- **A IA nunca controla o combate diretamente.** Ela só ajusta parâmetros entre lutas; se falhar
+  (por exemplo, Ollama desligado), o chefe continua com a estratégia anterior.
+- **As regras de justiça estão em código, não no prompt** (`definir_estrategia_boss`): cada parâmetro
+  muda no máximo 0,3 por luta, e após 3 derrotas seguidas o chefe fica mais fácil.
+- **`jogador_id` e `chefe` são escondidos do modelo** e preenchidos pelo `app.py`.
 
 ## Como rodar
 
-1. Escolha onde a IA roda e configure o `.env` (veja `.env.example`):
-   - **Ollama local:** instale em <https://ollama.com/download> e baixe um modelo com suporte
-     a ferramentas, por exemplo `ollama pull qwen3:8b`. Não precisa de chave.
-   - **Ollama Cloud:** crie uma chave em <https://ollama.com/settings/keys> e preencha
-     `OLLAMA_HOST=https://ollama.com`, `OLLAMA_API_KEY` e `OLLAMA_MODEL=gpt-oss:120b`.
+1. Configure a IA no `.env` (veja `.env.example`): Ollama local (`ollama pull qwen3:8b`) ou Ollama Cloud.
 2. Instale (Python 3.10+):
    ```powershell
    py -3.13 -m venv .venv
@@ -77,24 +100,36 @@ Decisões importantes:
    ```powershell
    .\.venv\Scripts\python.exe -m uvicorn app:app --reload
    ```
+   Para jogar na rede local: `--host 0.0.0.0` e compartilhe `http://SEU_IP:8000`.
 
-Para inspecionar o estado da luta no console do navegador:
-`(await import("/static/jogo.js")).depurar()`
+Bancos da versão anterior são migrados automaticamente na primeira execução.
 
-## Sprites
+## Trilha sonora
 
-Pacotes gratuitos da [Craftpix](https://craftpix.net) (licença em <https://craftpix.net/file-licenses/>):
-`static/sprint_girl2` (Girl_2), `static/sprint_minotaur2` (Minotaur_2) e `static/esqueleto_2`.
-Cada PNG é uma tira de quadros 128×128. Os quadros usados em cada animação, a âncora (centro dos
-pés) e a escala de cada personagem ficam em `static/sprites.js`.
+Coloque arquivos **MP3** em `static/audio/` com estes nomes (os que faltarem ficam em silêncio):
 
-O pacote da Girl_2 não tem animações de rolar, pular, levar dano e morrer. Elas foram montadas
-com o que existe: a corrida girando com rastro, o joelho erguido do chute, a pose de defesa
-tingida de vermelho e a mesma pose caindo.
+| Arquivo | Toca em |
+|---|---|
+| `ruinas.mp3` | Ruínas de Morvath |
+| `chefe_minotauro.mp3` | luta contra Morvath |
+| `floresta.mp3` | Floresta dos Sussurros |
+| `cripta.mp3` | Cripta dos Petrificados |
+| `chefe_gorgona.mp3` | luta contra Medrah |
+| `vitoria.mp3` | fim da jornada |
 
-## Ideias para evoluir
+As músicas tocam em loop, com transição suave entre cenas. Os navegadores só permitem som depois de
+um clique, por isso a música começa ao apertar "Começar"/"Continuar".
 
-- Sons de golpe, esquiva e morte (Web Audio).
-- NPC na fogueira, entre as lutas, que conversa com você e lembra das suas mortes.
-- Mais golpes no boss e novos parâmetros para a IA ajustar.
-- Mapa com fases antes do boss (Phaser.js).
+## Recursos gráficos e sonoros
+
+- `static/person` (o cavaleiro) e `static/objects` (cemitério noturno: fundo, chão, lajes, colunas,
+  muros, decoração): uso livre, crédito opcional (veja `license.txt` e `Autor_note.txt`).
+- Pacotes gratuitos da [Craftpix](https://craftpix.net) (licença em <https://craftpix.net/file-licenses/>):
+  Minotaur_2, Gorgon_1, esqueletos, magos (`wizard_enemy`), `explosion-sprites` e `fantasy-2d-battlegrounds`
+  (usado nas arenas dos chefes).
+- `static/sounds`: efeitos sonoros (WAV). Os escolhidos para cada ação ficam em `static/sons.js`.
+
+Os quadros, âncoras e escalas de cada personagem ficam em `static/sprites.js`. As folhas do cavaleiro
+usam quadros 128x64 em grade; a folha `Attacks` tem os golpes nos quadros 0–19 (os 20–39 são os mesmos
+golpes espelhados). As fases usam o cenário `objects`; as arenas dos chefes continuam com os
+`fantasy-2d-battlegrounds`.
