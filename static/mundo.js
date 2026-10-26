@@ -101,11 +101,26 @@ export function pisoEm(x, yReferencia) {
 // Escala das peças: 1.5 deixa o "tamanho de pixel" igual ao do cavaleiro
 const ESCALA = 1.5;
 
+// Visual de cada tema de fase:
+//   piso:   "grama" (faixa de grama), "pedra" (lajotas sobre tijolos) ou "rocha" (pedra escura com rachaduras em brasa)
+//   buraco: "escuro", "nevoa" (névoa verde subindo) ou "lava" (lava brilhando; cair continua matando)
+//   pedra:  cor multiplicada sobre lajes, estruturas e piso (null = cor original)
+//   clima:  partículas do ambiente (ver ambiente.js)
+export const TEMAS = {
+  ruinas: { piso: "grama", buraco: "escuro", pedra: null, clima: ["neblina"] },
+  floresta: { piso: "grama", buraco: "escuro", pedra: "#a9c79a", clima: ["vagalumes", "folhas"] },
+  cripta: { piso: "pedra", buraco: "nevoa", pedra: "#b5c9a8", clima: ["almas", "neblina_verde"] },
+  torre: { piso: "pedra", buraco: "escuro", pedra: "#e8b48c", clima: ["brasas", "poeira"] },
+  abismo: { piso: "rocha", buraco: "lava", pedra: "#c46a5c", clima: ["cinzas", "brasas"] },
+};
+
 // Decoração de fundo por tema (sorteada de forma determinística: a fase fica sempre igual)
 const DECORACAO = {
   ruinas: ["estatua", "grade", "arbusto", "planta", "grade", "arbusto_escuro"],
   floresta: ["arbusto", "arbusto_escuro", "planta", "morro", "arbusto", "planta"],
   cripta: ["grade", "estatua", "morro", "arbusto_escuro", "grade", "planta"],
+  torre: ["estatua", "grade", "grade", "planta", "estatua", "arbusto_escuro"],
+  abismo: ["morro", "arbusto_escuro", "estatua", "morro", "grade", "arbusto_escuro"],
 };
 const ESCALA_DECORACAO = { estatua: 0.75, grade: 1.2, arbusto: 0.6, arbusto_escuro: 0.6, morro: 0.9, planta: 1.3 };
 
@@ -120,10 +135,28 @@ export function gerarDecoracao(tema, largura) {
   return itens;
 }
 
-/** Fase inteira: decoração, chão, abismos, rampas, plataformas, estruturas e escadas. */
+// Piso de cada estilo: [peça, deslocamento do topo em relação ao chão, altura]; abaixo dele, a cor do subsolo
+const PISO = {
+  grama: { peca: "chao", topo: -18, subsolo: "#0b0807" },
+  pedra: { peca: "tampa", topo: -4, subsolo: "#141210" },
+  rocha: { peca: "tampa", topo: -4, subsolo: "#120706" },
+};
+
+// Pinta por cima (multiplicando) só onde a forma passar: muda a cor da pedra sem mexer no resto
+function tingir(ctx, cor, forma) {
+  if (!cor) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  ctx.fillStyle = cor;
+  ctx.beginPath(); forma(); ctx.fill();
+  ctx.restore();
+}
+
+/** Fase inteira: decoração, chão, abismos, rampas, plataformas, estruturas e escadas (no visual do tema). */
 export function desenharMundo(ctx) {
-  const jogo = estado.jogo, cam = jogo.cam;
+  const jogo = estado.jogo, cam = jogo.cam, tema = TEMAS[jogo.fase?.tema] || TEMAS.ruinas;
   const visivel = (x1, x2) => x2 > cam - 40 && x1 < cam + 1000;
+  const piso = PISO[tema.piso];
 
   // Decoração (atrás de tudo; a base fica escondida pela grama do chão)
   for (const d of jogo.decoracao) {
@@ -144,39 +177,50 @@ export function desenharMundo(ctx) {
       ctx.save();
       ctx.beginPath(); ctx.rect(cx - pw / 2, p.y + 20, pw, CHAO - p.y); ctx.clip();
       for (let y = CHAO + 4 - ph; y > p.y - ph; y -= ph - 2) desenharPeca(ctx, "pilar", cx - pw / 2, y, pw, ph);
+      tingir(ctx, tema.pedra, () => ctx.rect(cx - pw / 2, p.y, pw, CHAO - p.y + 20));
       ctx.restore();
     }
   }
 
-  // Chão: faixa de grama repetida; abaixo dela, terra escura
-  const [cw, ch] = tamanhoPeca("chao"), larguraChao = cw * ESCALA;
-  ctx.fillStyle = "#0b0807"; ctx.fillRect(cam - 10, CHAO + 40, 1000, 200);
-  for (let x = Math.floor(cam / larguraChao) * larguraChao; x < cam + 980; x += larguraChao) {
-    desenharPeca(ctx, "chao", x, CHAO - 18, larguraChao + 1, ch * ESCALA, Math.floor(x / larguraChao) % 2 === 1);
+  // Chão: faixa do piso repetida; abaixo dela, o subsolo (tijolos escuros nos pisos de pedra)
+  const [cw, ch] = tamanhoPeca(piso.peca), larguraChao = cw * ESCALA, alturaPiso = ch * ESCALA;
+  const x0 = Math.floor(cam / larguraChao) * larguraChao;
+  ctx.fillStyle = piso.subsolo; ctx.fillRect(cam - 10, CHAO + 18, 1000, 200);
+  if (tema.piso !== "grama") {
+    const [tw, th] = tamanhoPeca("tijolos");
+    ctx.globalAlpha = 0.35;
+    for (let y = CHAO + piso.topo + alturaPiso; y < H; y += th * ESCALA) {
+      for (let x = x0 - ((y / 7) % 2) * 40; x < cam + 980; x += tw * ESCALA) desenharPeca(ctx, "tijolos", x, y, tw * ESCALA, th * ESCALA);
+    }
+    ctx.globalAlpha = 1;
   }
+  for (let x = x0; x < cam + 980; x += larguraChao) {
+    desenharPeca(ctx, piso.peca, x, CHAO + piso.topo, larguraChao + 1, alturaPiso, Math.floor(x / larguraChao) % 2 === 1);
+  }
+  tingir(ctx, tema.pedra, () => ctx.rect(cam - 10, CHAO + piso.topo, 1000, H - CHAO - piso.topo));
+  if (tema.piso === "rocha") desenharRachaduras(ctx, cam, jogo.t);
 
-  // Abismos: escuridão por cima do chão, com bordas de terra
+  // Abismos (escuros, com névoa ou com lava), com bordas de terra
   for (const b of jogo.buracos) {
     if (!visivel(b.x1, b.x2)) continue;
-    const g = ctx.createLinearGradient(0, CHAO - 20, 0, H);
-    g.addColorStop(0, "#120b08"); g.addColorStop(1, "#000");
-    ctx.fillStyle = g; ctx.fillRect(b.x1, CHAO - 20, b.x2 - b.x1, H - CHAO + 20);
-    ctx.fillStyle = "#3a2618";
+    desenharBuraco(ctx, b, tema.buraco, jogo.t);
+    ctx.fillStyle = tema.buraco === "lava" ? "#2a1210" : "#3a2618";
     for (const [borda, lado] of [[b.x1, 1], [b.x2, -1]]) {
       for (let y = CHAO - 16; y < H; y += 14) ctx.fillRect(borda - (lado > 0 ? 0 : 7) + ((y / 14) % 2) * 3 * lado, y, 7, 12);
     }
   }
 
-  // Rampas: terra escura por baixo e a faixa de grama inclinada por cima
+  // Rampas: subsolo por baixo e a faixa do piso inclinada por cima
   for (const r of jogo.rampas) {
     if (!visivel(r.x1, r.x2)) continue;
     const base = Math.max(r.y1, r.y2, CHAO) + 40;
-    ctx.fillStyle = "#1b120c";
+    ctx.fillStyle = tema.piso === "grama" ? "#1b120c" : piso.subsolo;
     ctx.beginPath(); ctx.moveTo(r.x1, r.y1); ctx.lineTo(r.x2, r.y2); ctx.lineTo(r.x2, base); ctx.lineTo(r.x1, base); ctx.fill();
     const ang = Math.atan2(r.y2 - r.y1, r.x2 - r.x1), comprimento = Math.hypot(r.x2 - r.x1, r.y2 - r.y1);
     ctx.save();
     ctx.translate(r.x1, r.y1); ctx.rotate(ang);
-    for (let d = -8; d < comprimento; d += larguraChao - 2) desenharPeca(ctx, "chao", d, -18, larguraChao + 1, ch * ESCALA);
+    for (let d = -8; d < comprimento; d += larguraChao - 2) desenharPeca(ctx, piso.peca, d, piso.topo, larguraChao + 1, alturaPiso);
+    tingir(ctx, tema.pedra, () => ctx.rect(-8, piso.topo, comprimento + 16, alturaPiso));
     ctx.restore();
   }
 
@@ -191,6 +235,7 @@ export function desenharMundo(ctx) {
       desenharFatiaPeca(ctx, "laje", ponta, largura / ESCALA, x, y, largura, alturaLaje);
     }
     desenharFatiaPeca(ctx, "laje", lw - ponta, ponta, p.x2 - pontaW, y, pontaW, alturaLaje);
+    tingir(ctx, tema.pedra, () => ctx.rect(p.x1, y, p.x2 - p.x1, alturaLaje));
   }
 
   // Obstáculos e estruturas
@@ -198,6 +243,7 @@ export function desenharMundo(ctx) {
     if (!visivel(b.x1, b.x2)) continue;
     if (b.tipo === "torre" || b.tipo === "degrau") desenharAlvenaria(ctx, b);
     else desenharPeca(ctx, b.tipo === "coluna" ? "pilar_quebrado" : "muro", b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
+    tingir(ctx, tema.pedra, () => ctx.rect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1));
   }
 
   // Escadas de mão (madeira)
@@ -207,6 +253,54 @@ export function desenharMundo(ctx) {
     ctx.fillStyle = "#6b4a2c"; ctx.fillRect(e.x - 13, e.topo - 6, 2, e.base - e.topo + 6); ctx.fillRect(e.x + 10, e.topo - 6, 2, e.base - e.topo + 6);
     for (let y = e.topo + 4; y < e.base; y += 16) { ctx.fillStyle = "#5a3e26"; ctx.fillRect(e.x - 10, y, 20, 4); ctx.fillStyle = "#7d5a38"; ctx.fillRect(e.x - 10, y, 20, 1); }
   }
+}
+
+// Abismo: escuridão simples, névoa verde subindo (cripta) ou lava viva (abismo rubro)
+function desenharBuraco(ctx, b, estilo, t) {
+  const w = b.x2 - b.x1;
+  if (estilo === "lava") {
+    // Brilho subindo do buraco, superfície ondulando e bolhas
+    const brilho = ctx.createLinearGradient(0, CHAO - 120, 0, CHAO + 10);
+    brilho.addColorStop(0, "rgba(255,90,20,0)"); brilho.addColorStop(1, `rgba(255,110,30,${0.28 + 0.08 * Math.sin(t * 2)})`);
+    ctx.fillStyle = brilho; ctx.fillRect(b.x1 - 30, CHAO - 120, w + 60, 130);
+    ctx.fillStyle = "#1a0705"; ctx.fillRect(b.x1, CHAO - 20, w, 70);
+    const lava = ctx.createLinearGradient(0, CHAO + 40, 0, H);
+    lava.addColorStop(0, "#ffcf5a"); lava.addColorStop(0.25, "#ff7a1e"); lava.addColorStop(1, "#7a1206");
+    ctx.fillStyle = lava;
+    ctx.beginPath(); ctx.moveTo(b.x1, H);
+    for (let x = b.x1; x <= b.x2; x += 6) ctx.lineTo(x, CHAO + 46 + Math.sin(x * 0.08 + t * 2.5) * 3);
+    ctx.lineTo(b.x2, H); ctx.fill();
+    ctx.fillStyle = "#ffe08a";
+    for (let i = 0; i < w / 30; i++) {
+      const fase = (t * 0.7 + i * 0.37) % 1, bx = b.x1 + ((i * 53) % w);
+      ctx.globalAlpha = 1 - fase; ctx.fillRect(bx, CHAO + 44 - fase * 14, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
+  const g = ctx.createLinearGradient(0, CHAO - 20, 0, H);
+  g.addColorStop(0, "#120b08"); g.addColorStop(1, "#000");
+  ctx.fillStyle = g; ctx.fillRect(b.x1, CHAO - 20, w, H - CHAO + 20);
+  if (estilo === "nevoa") {
+    for (let i = 0; i < 4; i++) {
+      const y = CHAO + 20 - ((t * 12 + i * 22) % 80), a = 0.18 * (1 - ((t * 12 + i * 22) % 80) / 80);
+      ctx.fillStyle = `rgba(120,220,140,${a})`;
+      ctx.beginPath(); ctx.ellipse(b.x1 + w / 2 + Math.sin(t + i) * w * 0.2, y, w * 0.45, 10, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+// Rachaduras em brasa na rocha (abismo rubro): pulsam devagar
+function desenharRachaduras(ctx, cam, t) {
+  ctx.save();
+  ctx.strokeStyle = `rgba(255,110,40,${0.45 + 0.2 * Math.sin(t * 1.7)})`; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = Math.floor(cam / 140) * 140; x < cam + 1000; x += 140) {
+    const s = (x * 7919) % 97;  // posição fixa para cada trecho
+    ctx.moveTo(x + s, CHAO + 4); ctx.lineTo(x + s + 12, CHAO + 14); ctx.lineTo(x + s + 6, CHAO + 26); ctx.lineTo(x + s + 20, CHAO + 40);
+  }
+  ctx.stroke();
+  ctx.restore();
 }
 
 // Estrutura de tijolos (torres, muros altos, degraus): tampa de pedra em cima e tijolos repetidos no corpo

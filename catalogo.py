@@ -28,7 +28,18 @@ ARMAS = {
     "cajado": {"nome": "Cajado Arcano", "dano": 0.9, "velocidade": 0.9, "alcance": 1.0, "folego": 1.25,
                "critico": 2.0, "postura": 1, "rastro": "#8fd8ff", "magia": True, "icone": ["magia", 6, 0], "preco": 1600,
                "requer": "minotauro",
-               "descricao": "Dispara esferas arcanas. Mantém a distância, mas gasta muito fôlego."},
+               "descricao": "Dispara esferas arcanas (o dano cresce com a Fé). Mantém a distância, mas gasta muito fôlego."},
+    "punhos": {"nome": "Punhos", "dano": 0.6, "velocidade": 1.35, "alcance": 0.75, "folego": 0.6,
+               "critico": 2.5, "postura": 1, "rastro": "#f0ead6", "icone": None, "preco": None,
+               "descricao": "Socos e chutes. Rápidos e baratos, mas fracos."},
+    "cajado_ignar": {"nome": "Cajado de Ignar", "dano": 1.15, "velocidade": 0.9, "alcance": 1.0, "folego": 1.2,
+                     "critico": 2.0, "postura": 1, "rastro": "#ff9a3c", "magia": True, "queima": True,
+                     "icone": ["magia", 6, 3], "preco": None, "recompensa": "arquimago",
+                     "descricao": "Arrancado das mãos do Arquimago. As esferas incendeiam (dano cresce com a Fé)."},
+    "espada_abissal": {"nome": "Espada Abissal", "dano": 1.7, "velocidade": 0.72, "alcance": 1.2, "folego": 1.45,
+                       "critico": 2.5, "postura": 3, "rastro": "#b46bff", "icone": ["espadas", 11, 1], "preco": None,
+                       "recompensa": "arquidemonio",
+                       "descricao": "Forjada no coração de Azrakh. Pesadíssima; quebra qualquer guarda."},
 }
 
 ESCUDOS = {
@@ -58,15 +69,56 @@ CONSUMIVEIS = {
 ATRIBUTOS = {
     "vigor": "Vigor: +8 de vida máxima",
     "folego": "Fôlego: +6 de fôlego máximo",
-    "forca": "Força: +6% de dano",
-    "fe": "Fé: +4 de cura por frasco",
+    "forca": "Força: +6% de dano com armas",
+    "fe": "Fé: +4 de cura por frasco e +6% de dano com magia",
 }
 
 # Almas por chefe derrotado (os inimigos comuns pagam no navegador, ver ALMAS em static/inimigos.js)
-ALMAS_CHEFE = {"minotauro": 1500, "gorgona": 3000}
+ALMAS_CHEFE = {"minotauro": 1500, "gorgona": 3000, "arquimago": 4500, "arquidemonio": 7000}
 ALMAS_POR_INIMIGO_MAX = 120  # nenhum inimigo comum paga mais que isso (validação ao sincronizar)
 
+# Classe inicial: escolhida uma vez, no começo da jornada.
+# sprite/filtro: como o personagem é desenhado no navegador (static/jogador.js)
+CLASSES = {
+    "cavaleiro": {
+        "nome": "Cavaleiro", "sprite": "cavaleiro_armadura", "filtro": None,
+        "descricao": "Espada e escudo. Equilibrado e resistente: bloqueia o que não consegue esquivar.",
+        "atributos": {"vigor": 3, "folego": 2, "forca": 2, "fe": 1},
+        "arma": "espada", "escudo": "madeira", "armas": {"espada": 0}, "escudos": ["nenhum", "madeira"],
+        "consumiveis": {"erva": 2, "bomba": 1},
+    },
+    "lanceiro": {
+        "nome": "Lanceiro", "sprite": "cavaleiro", "filtro": "hue-rotate(190deg) saturate(1.3)",
+        "descricao": "Lança longa e muito fôlego. Acerta antes de ser acertado, mas não tem escudo.",
+        "atributos": {"vigor": 2, "folego": 4, "forca": 2, "fe": 1},
+        "arma": "lanca", "escudo": "nenhum", "armas": {"lanca": 0}, "escudos": ["nenhum"],
+        "consumiveis": {"erva": 3, "bomba": 1},
+    },
+    "viking": {
+        "nome": "Viking", "sprite": "viking", "filtro": None,
+        "descricao": "Machado e escudo redondo. Muita força e vida, pouca fé: golpes lentos que quebram guardas.",
+        "atributos": {"vigor": 3, "folego": 2, "forca": 4, "fe": 0},
+        "arma": "machado", "escudo": "madeira", "armas": {"machado": 0}, "escudos": ["nenhum", "madeira"],
+        "consumiveis": {"erva": 2},
+    },
+    "fresco": {
+        "nome": "Fresco", "sprite": "girl1", "filtro": None,
+        "descricao": "Maga com cajado. Ataca de longe com esferas arcanas que crescem com a Fé; frágil de perto.",
+        "atributos": {"vigor": 1, "folego": 2, "forca": 1, "fe": 4},
+        "arma": "cajado", "escudo": "nenhum", "armas": {"cajado": 0}, "escudos": ["nenhum"],
+        "consumiveis": {"erva": 3, "resina": 1},
+    },
+    "guilherme": {
+        "nome": "Guilherme", "sprite": "guilherme", "filtro": None,
+        "descricao": "Sem arma, sem atributos, sem nada. Luta com socos e chutes. Para quem quer sofrer.",
+        "atributos": {"vigor": 0, "folego": 0, "forca": 0, "fe": 0},
+        "arma": "punhos", "escudo": "nenhum", "armas": {"punhos": 0}, "escudos": ["nenhum"],
+        "consumiveis": {},
+    },
+}
+
 PERSONAGEM_INICIAL = {
+    "classe": None,                  # escolhida no começo da jornada (ver CLASSES)
     "nivel": 1, "almas": 0,
     "atributos": {"vigor": 1, "folego": 1, "forca": 1, "fe": 1},
     "arma": "espada", "escudo": "nenhum",
@@ -118,4 +170,4 @@ def estoque(cenas_vencidas: set[str]) -> dict:
 
 def catalogo_publico() -> dict:
     return {"armas": ARMAS, "escudos": ESCUDOS, "consumiveis": CONSUMIVEIS, "atributos": ATRIBUTOS,
-            "melhoria_max": MELHORIA_MAX}
+            "classes": CLASSES, "melhoria_max": MELHORIA_MAX}

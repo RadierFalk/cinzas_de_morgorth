@@ -19,7 +19,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 import bcrypt
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -48,6 +48,8 @@ else:
 PERSONAS = {
     "minotauro": "Morvath, o Guardião Esquecido, um minotauro com um machado enorme que guarda as ruínas",
     "gorgona": "Medrah, a Górgona, meio mulher, meio serpente, que transforma viajantes em estátuas no seu salão",
+    "arquimago": "Ignar, o Arquimago, um feiticeiro arrogante que governa a Torre das Cinzas com fogo",
+    "arquidemonio": "Azrakh, o Arquidemônio, senhor do Abismo Rubro, que voa e faz chover esferas sombrias",
 }
 
 MENTE_DO_BOSS = """Você é a mente de {persona}, chefe de um jogo souls-like 2D.
@@ -99,12 +101,28 @@ DICAS_PADRAO = {
         "combo1": "Não fique colado nele.", "combo2": "O combo não termina no segundo golpe.",
         "combo3": "O terceiro golpe tarda. Espere-o.", "investida": "Quando ele recua o machado, role na direção dele.",
         "especial": "Ele salta onde você estará, não onde está.", "onda": "Pule a onda de choque.",
+        "giro": "Quando o machado gira, recue. Depois, ele cambaleia.", "desabamento": "O teto cai onde há sombra.",
         "reverso": "Rolar por dentro dele tem um preço.",
     },
     "gorgona": {
         "combo1": "A cauda alcança mais longe do que parece.", "combo2": "São três chicotadas, não duas.",
         "combo3": "A terceira chicotada tarda. Espere-a.", "investida": "Quando ela se enrola, o bote vem.",
         "especial": "Não encare o olhar: pule-o ou atravesse-o rolando.", "reverso": "Rolar por dentro dela tem um preço.",
+        "veneno": "O veneno cai à sua volta. Chegue perto dela.", "varredura": "Quando a cauda brilha, pule.",
+    },
+    "arquimago": {
+        "combo1": "O cajado alcança mais do que parece.", "combo2": "São três golpes de cajado.",
+        "combo3": "O terceiro golpe tarda. Espere-o.", "investida": "Quando ele some em chamas, role na direção dele.",
+        "especial": "Quando a mão dele arde, fique atrás dele ou bem longe.", "chuva": "Fogo do céu: não fique parado.",
+        "bolas": "Três bolas de fogo coladas: uma rolagem atravessa todas.", "teleporte": "Quando ele some, olhe para trás.",
+        "reverso": "Rolar por dentro dele tem um preço.",
+    },
+    "arquidemonio": {
+        "combo1": "As garras alcançam longe.", "combo2": "O combo não termina no segundo golpe.",
+        "combo3": "O terceiro golpe tarda. Espere-o.", "investida": "Quando ele recua no ar, o mergulho vem: role na direção dele.",
+        "especial": "Sombras no chão marcam onde as esferas vão cair: saia de cima.", "chuva": "Sombras no chão: saia de cima.",
+        "rajada": "O leque sombrio passa por cima de quem rola.", "pilares": "As rachaduras roxas avançam: atravesse rolando.",
+        "reverso": "Rolar por dentro dele tem um preço.",
     },
 }
 # Campos que o app preenche sozinho: o modelo nunca vê nem escolhe (não mexe nos dados de outro jogador)
@@ -185,6 +203,34 @@ async def rodar_agente(sistema: str, mensagens: list[dict], tools: list[dict], u
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.middleware("http")
+async def sem_cache_do_codigo(request: Request, call_next):
+    """O navegador sempre confere se a página e os scripts mudaram (sem isso, guarda versões velhas do jogo).
+    Imagens e sons continuam em cache normal."""
+    resposta = await call_next(request)
+    if request.url.path == "/" or request.url.path.endswith((".js", ".html")):
+        resposta.headers["Cache-Control"] = "no-cache"
+    return resposta
+
+
+# Os scripts do jogo são servidos em /jogo/<versão>/..., e a versão muda sempre que um .js muda.
+# Como os módulos se importam com caminhos relativos ("./sprites.js"), todos herdam a versão da página:
+# o navegador nunca mistura um script novo com outro velho guardado em cache.
+PASTA_STATIC = os.path.abspath("static")
+
+
+def versao_dos_scripts() -> str:
+    return str(max(int(os.path.getmtime(os.path.join(PASTA_STATIC, f))) for f in os.listdir(PASTA_STATIC) if f.endswith(".js")))
+
+
+@app.get("/jogo/{versao}/{arquivo}")
+def script_do_jogo(versao: str, arquivo: str):
+    caminho = os.path.join(PASTA_STATIC, arquivo)
+    if not arquivo.endswith(".js") or os.path.dirname(os.path.abspath(caminho)) != PASTA_STATIC or not os.path.isfile(caminho):
+        raise HTTPException(404)
+    return FileResponse(caminho, media_type="text/javascript")
 
 
 # ===================== Login =====================
@@ -283,6 +329,15 @@ def regra(funcao, usuario_id: int, *args):
     except personagem.ErroDeRegra as e:
         raise HTTPException(400, str(e))
     return {"personagem": p, "mensagem": mensagem, "loja": personagem.estoque_do_jogador(usuario_id), **custos(usuario_id)}
+
+
+class Classe(BaseModel):
+    classe: str
+
+
+@app.post("/api/classe")
+def escolher_classe(c: Classe, u: dict = Depends(usuario_logado)):
+    return regra(personagem.escolher_classe, u["id"], c.classe)
 
 
 class Item(BaseModel):
@@ -406,4 +461,7 @@ def dica_padrao(chefe: str, log: dict) -> str:
 
 @app.get("/")
 def pagina():
-    return FileResponse("static/index.html")
+    with open("static/index.html", encoding="utf-8") as f:
+        html = f.read()
+    # Os imports da página apontam para a versão atual dos scripts (ver script_do_jogo)
+    return HTMLResponse(html.replace('from "/static/', f'from "/jogo/{versao_dos_scripts()}/'))

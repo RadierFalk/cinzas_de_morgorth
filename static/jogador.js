@@ -1,8 +1,9 @@
 // O cavaleiro (sprites da pasta person): movimento, esquiva, combo de 3 golpes, ataque mergulho,
 // bloqueio com escudo, armas, itens, escadas de mão, cura, crítico na cabeça e dano recebido.
-// Os atributos vêm do personagem salvo no servidor (nível, arma, escudo) — ver configurarJogadora.
+// Os atributos vêm do personagem salvo no servidor (classe, nível, arma, escudo) — ver configurarJogadora.
+// A mecânica é a mesma para todas as classes; só o desenho muda (ver VISUAIS).
 import { estado, consumir, segurando, CHAO, H, caixa, sobrepoe, particulas, texto } from "./nucleo.js";
-import { desenharSprite, desenharIcone, ciclo } from "./sprites.js";
+import { desenharSprite, desenharIcone, ciclo, nQuadros } from "./sprites.js";
 import { moverCorpo, sobrePlataforma, escadaPerto, pisoEm, noAbismo } from "./mundo.js";
 import { efeito } from "./efeitos.js";
 import { som } from "./sons.js";
@@ -37,7 +38,7 @@ export function novaJogadora(x) {
     hp: 100, hpMax: 100, hpFantasma: 100, est: 100, estMax: 100, estDelay: 0, frascos: 3,
     estado: "livre", tEstado: 0, invul: 0, semFolego: 0, janelaCombo: 0, proximoGolpe: 0, passo: 0,
     bloqueando: false, itemSel: 0, regen: 0, resina: 0,
-    stats: statsPadrao(),
+    stats: statsPadrao(), visual: { sprite: "cavaleiro", filtro: null },
   };
 }
 
@@ -55,11 +56,14 @@ export function configurarJogadora(j, personagem, catalogo, encher = true) {
   const a = personagem.atributos, arma = catalogo.armas[personagem.arma] || catalogo.armas.espada;
   const nivelArma = personagem.armas[personagem.arma] || 0;
   const escudo = catalogo.escudos[personagem.escudo];
+  const classe = catalogo.classes?.[personagem.classe];
+  j.visual = { sprite: classe?.sprite || "cavaleiro", filtro: classe?.filtro || null };
   j.hpMax = 100 + 8 * (a.vigor - 1);
   j.estMax = 100 + 6 * (a.folego - 1);
   j.frascosMax = personagem.frascos_max;
+  const atributoDano = arma.magia ? a.fe : a.forca;  // magia cresce com a Fé; armas, com a Força
   j.stats = {
-    danoMult: arma.dano * (1 + 0.1 * nivelArma) * (1 + 0.06 * (a.forca - 1)),
+    danoMult: arma.dano * (1 + 0.1 * nivelArma) * (1 + 0.06 * (atributoDano - 1)),
     curaQtd: 45 + 4 * (a.fe - 1) + (personagem.cura_extra || 0),
     critico: arma.critico, postura: arma.postura, queima: !!arma.queima, magia: !!arma.magia,
     vel: arma.velocidade, alcance: arma.alcance, folego: arma.folego, rastro: arma.rastro,
@@ -477,16 +481,48 @@ function quadroJogadora(j, t) {
   return ["parado", 0];
 }
 
+// Classes com outro sprite: cada animação do cavaleiro (pasta person) vira [animação do sprite, quadro fixo, efeito]
+// ou uma função do quadro. Sem quadro fixo, os quadros são distribuídos na mesma proporção. Efeitos para o que o
+// sprite não tem: "giro" (rola girando o corpo) e "deitar" (cai para trás ao morrer).
+const N_CAVALEIRO = { parado: 8, correr: 8, pulo: 8, rolar: 4, ataque: 20, mergulho: 8, curar: 8, rezar: 12, ferido: 3, morte: 4, escalar: 6 };
+// Animação que precisa chegar ao último quadro (morte): estica os quadros do cavaleiro até o fim
+const ateOFim = (sprite, alvo, anim) => (q) => [alvo, Math.round((q * (nQuadros(sprite, alvo) - 1)) / (N_CAVALEIRO[anim] - 1))];
+// Combo em três folhas separadas: os quadros 0-5, 9-13 e 14-19 do cavaleiro são o 1º, 2º e 3º golpe (ver COMBO)
+const tresGolpes = (sprite) => (q) => {
+  const [anim, ini, fim] = q < 9 ? ["ataque1", 0, 5] : q < 14 ? ["ataque2", 9, 13] : ["ataque3", 14, 19];
+  return [anim, Math.round(((Math.min(q, fim) - ini) / (fim - ini)) * (nQuadros(sprite, anim) - 1))];
+};
+const VISUAIS = {
+  cavaleiro_armadura: { ataque: tresGolpes("cavaleiro_armadura"), rolar: ["pulo", null, "giro"], mergulho: ["ataque3"],
+    curar: ["proteger", 0], rezar: ["proteger", 0], escalar: ["parado"], morte: ateOFim("cavaleiro_armadura", "morte", "morte") },
+  viking: { ataque: tresGolpes("viking"), morte: ateOFim("viking", "morte", "morte") },
+  guilherme: { mergulho: ["ataque", 6], curar: ["parado"], rezar: ["parado"], escalar: ["andar"],
+    morte: ateOFim("guilherme", "morte", "morte") },
+  girl1: { pulo: ["correr", 3], rolar: ["correr", null, "giro"], mergulho: ["ataque", 5], curar: ["falar"],
+    rezar: ["falar"], ferido: ["defesa"], morte: ["defesa", 1, "deitar"], escalar: ["correr"] },
+};
+
+export function traduzir(sprite, anim, q) {
+  if (sprite === "cavaleiro") return [anim, q, null];
+  const regra = VISUAIS[sprite]?.[anim] || [anim];
+  if (typeof regra === "function") return [...regra(q), null];
+  const [alvo, fixo = null, efeito = null] = regra;
+  return [alvo, fixo ?? Math.floor((q * nQuadros(sprite, alvo)) / N_CAVALEIRO[anim]), efeito];
+}
+
 export function desenharJogadora(ctx, j, t) {
-  const [anim, q] = quadroJogadora(j, t);
-  let alpha = 1;
+  const { sprite, filtro } = j.visual;
+  const [anim, q, efeitoVisual] = traduzir(sprite, ...quadroJogadora(j, t));
+  let alpha = 1, rot = 0, pivo = 36;
   if (j.invul > 0 && !["morto", "atingido", "petrificada"].includes(j.estado) && Math.floor(t * 20) % 2) alpha = 0.45;
+  if (efeitoVisual === "giro") { rot = j.dir * (j.tEstado / P.rolarDur) * Math.PI * 2; pivo = 34; }
+  if (efeitoVisual === "deitar") { rot = -j.dir * Math.min(1, j.tEstado * 3) * Math.PI / 2; pivo = 0; }
   if (j.estado === "rolar") {
     // Rastro da rolagem
-    for (let i = 1; i <= 2; i++) desenharSprite(ctx, "cavaleiro", anim, q, j.x - j.vx * 0.03 * i, j.y, { dir: j.dir, alpha: 0.2 / i });
+    for (let i = 1; i <= 2; i++) desenharSprite(ctx, sprite, anim, q, j.x - j.vx * 0.03 * i, j.y, { dir: j.dir, alpha: 0.2 / i, rot, pivo, filtro });
   }
-  desenharSprite(ctx, "cavaleiro", anim, q, j.x, j.y, {
-    dir: j.dir, alpha,
+  desenharSprite(ctx, sprite, anim, q, j.x, j.y, {
+    dir: j.dir, alpha, rot, pivo, filtro,
     vermelho: j.estado === "atingido" ? Math.max(0, 1 - j.tEstado / 0.3) : 0,
     pedra: j.estado === "petrificada" ? 0.85 : 0,
   });

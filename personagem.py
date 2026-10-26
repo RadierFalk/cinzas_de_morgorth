@@ -61,6 +61,19 @@ def comprar(usuario_id: int, item: str) -> tuple[dict, str]:
     return salvar(usuario_id, p), f"Comprou {oferta['nome']} por {preco} almas."
 
 
+def escolher_classe(usuario_id: int, classe: str) -> tuple[dict, str]:
+    """Só uma vez, no começo da jornada: aplica os atributos e o equipamento inicial da classe."""
+    if classe not in cat.CLASSES:
+        raise ErroDeRegra("Classe desconhecida.")
+    p = carregar(usuario_id)
+    if p.get("classe"):
+        raise ErroDeRegra("A classe já foi escolhida.")
+    c = cat.CLASSES[classe]
+    p.update({"classe": classe, "atributos": dict(c["atributos"]), "arma": c["arma"], "escudo": c["escudo"],
+              "armas": dict(c["armas"]), "escudos": list(c["escudos"]), "consumiveis": dict(c["consumiveis"])})
+    return salvar(usuario_id, p), f"Você desperta como {c['nome']}."
+
+
 def subir_nivel(usuario_id: int, atributo: str) -> tuple[dict, str]:
     if atributo not in cat.ATRIBUTOS:
         raise ErroDeRegra("Atributo desconhecido.")
@@ -160,6 +173,7 @@ def resumo(usuario_id: int) -> dict:
     """Visão do personagem para a IA (mercador e conselheiro)."""
     p = carregar(usuario_id)
     return {
+        "classe": cat.CLASSES[p["classe"]]["nome"] if p.get("classe") else None,
         "nivel": p["nivel"], "almas": p["almas"], "atributos": p["atributos"],
         "arma": cat.ARMAS[p["arma"]]["nome"] + f" +{p['armas'].get(p['arma'], 0)}",
         "escudo": cat.ESCUDOS[p["escudo"]]["nome"],

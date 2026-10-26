@@ -8,10 +8,12 @@ import sqlite3
 ARQUIVO = "souls.db"
 
 # Ordem da campanha. Morrer numa fase recomeça a fase; vencer um chefe libera a próxima.
-CENAS = ["ruinas", "minotauro", "floresta", "cripta", "gorgona"]
+CENAS = ["ruinas", "minotauro", "floresta", "cripta", "gorgona", "torre", "arquimago", "abismo", "arquidemonio"]
 CHEFES = {
     "minotauro": "Mais uma cinza que vem perturbar meu descanso. Aproxime-se.",
     "gorgona": "Mais uma estátua para o meu salão. Olhe para mim, viajante.",
+    "arquimago": "Subiu a minha torre só para queimar? Que desperdício de cinzas.",
+    "arquidemonio": "Todas as almas que você colheu desceram até mim. Agora venha você.",
 }
 
 # Como um chefe luta quando ainda não aprendeu nada sobre o jogador
@@ -179,6 +181,7 @@ def carregar_personagem(usuario_id: int, inicial: dict) -> dict:
     if not linhas:
         return json.loads(json.dumps(inicial))  # cópia
     dados = json.loads(linhas[0]["dados"])
+    dados.setdefault("classe", "cavaleiro")  # personagens de antes das classes já eram cavaleiros
     return {**json.loads(json.dumps(inicial)), **dados}  # campos novos ganham o valor inicial
 
 

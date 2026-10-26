@@ -7,6 +7,10 @@ const FAIXAS = {
   floresta: "floresta.mp3",
   cripta: "cripta.mp3",
   gorgona: "chefe_gorgona.mp3",
+  torre: "torre.mp3",
+  arquimago: "chefe_arquimago.mp3",
+  abismo: "abismo.mp3",
+  arquidemonio: "chefe_arquidemonio.mp3",
   vitoria: "vitoria.mp3",
 };
 const VOLUME = 0.45;

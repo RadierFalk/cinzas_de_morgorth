@@ -17,6 +17,49 @@ e escreve a fala do chefe e uma dica.
 | 3 | Floresta dos Sussurros | Battleground 3 | magos de fogo, do raio e errantes + esqueletos |
 | 4 | Cripta dos Petrificados | Battleground 4 | todos os inimigos, a fase mais longa |
 | 5 | **Medrah, a Górgona** | Battleground 2 | chefe górgona com olhar petrificante |
+| 6 | Torre das Cinzas | noite (tom de brasa) | magos em andaimes, torre com escada de mão, ponte sobre abismo |
+| 7 | **Ignar, o Arquimago** | Battleground 2 (pálido) | mago de fogo gigante: jato de chamas; na fase 2, chuva de fogo |
+| 8 | Abismo Rubro | noite (tom de sangue) | cinco abismos, ArchDemons voadores, lobos e demônios |
+| 9 | **Azrakh, o Arquidemônio** | Battleground 4 | chefe final voador: mergulho e chuva de esferas sombrias |
+
+Cada fase tem um visual próprio (`TEMAS` em `static/mundo.js` e clima em `static/ambiente.js`):
+
+| Fase | Fundo | Piso e abismos | Clima |
+|---|---|---|---|
+| Ruínas | cemitério noturno | grama, abismo escuro | neblina |
+| Floresta | selva (Battleground 3) | grama, pedras com musgo | vaga-lumes e folhas caindo |
+| Cripta | cripta das luzes verdes (Battleground 4 pálido) | lajotas, névoa verde nos abismos | almas subindo, névoa verde |
+| Torre | salão do castelo à luz de velas (Battleground 2) | lajotas cor de brasa | brasas e poeira |
+| Abismo | ruínas tingidas de vermelho (Battleground 1 pálido) | rocha com rachaduras em brasa, **lava** nos abismos | cinzas e brasas |
+
+## Golpes dos chefes
+
+Além do combo, da investida e do reverso, cada chefe sorteia entre vários **especiais**, preferindo os
+feitos para a distância em que você está (o peso "especial" que a IA ajusta decide a frequência):
+
+| Chefe | Especiais | Como escapar |
+|---|---|---|
+| Minotauro | salto com ondas de choque · **giro** do machado · **desabamento** (fase 2) | pular a onda · recuar (depois ele fica tonto) · sair das sombras |
+| Górgona | olhar petrificante · **veneno** em arco (deixa poças) · **varredura** da cauda | pular/rolar · chegar perto dela · **pular** |
+| Arquimago | jato de chamas · **bolas de fogo** · **teleporte** às suas costas · chuva de fogo (fase 2) | ficar atrás · uma rolagem atravessa o trio · virar-se · não ficar parado |
+| Arquidemônio | chuva sombria · **rajada** em leque · **pilares** de sombra | sair das sombras · rolar · passar para trás dele |
+
+## Classes
+
+Uma conta nova escolhe a classe antes de começar (não dá para trocar depois; contas antigas viram Cavaleiro).
+
+| Classe | Sprite | Começa com | Atributos (Vig/Fôl/For/Fé) |
+|---|---|---|---|
+| Cavaleiro | `cavaleiro/Spritesheet 128/Knight_1` | espada + escudo de madeira, 2 ervas, 1 bomba | 3 / 2 / 2 / 1 |
+| Lanceiro | `person`, recolorido | lança, 3 ervas, 1 bomba | 2 / 4 / 2 / 1 |
+| Viking | `Viking/Viking-Sheet` | machado + escudo de madeira, 2 ervas | 3 / 2 / 4 / 0 |
+| Fresco | `sprint_girl2/Girl_1` (arremessa um livro) | cajado (esferas que crescem com a **Fé**), 3 ervas, 1 resina | 1 / 2 / 1 / 4 |
+| Guilherme | `guilherme` (boneco de palito) | punhos e nada mais | 0 / 0 / 0 / 0 |
+
+As classes ficam em `catalogo.py` (`CLASSES`). As animações de cada sprite são ligadas às do jogo em
+`static/jogador.js` (`VISUAIS`): o combo usa as três folhas de ataque do Cavaleiro e do Viking; o que falta
+é adaptado (o Cavaleiro dá uma cambalhota ao rolar, a Fresco gira o corpo). Os PNGs avulsos do Guilherme
+viram tiras com `python ferramentas/montar_folhas_guilherme.py` (as tiras já estão em `static/guilherme/folhas`).
 
 - Cada fase tem uma **fogueira no meio** (morrer depois de acendê-la recomeça dali, nesta sessão) e uma
   **no fim**, que salva o progresso no servidor. A névoa leva à próxima cena.
@@ -50,8 +93,8 @@ e escreve a fala do chefe e uma dica.
   - **Loja** (Ozren, o mercador): armas, escudos, itens, Fragmento de Estus (+1 frasco) e Cinza de Estus (cada frasco cura mais).
   - **Ferreiro**: melhora a arma até +5 (+10% de dano por nível).
   - **Equipamento**: troca arma e escudo.
-- Vencer um chefe dá almas e, na primeira vez, uma recompensa (Minotauro: Lâmina Flamejante e +1 frasco;
-  libera o Cajado na loja).
+- Vencer um chefe dá almas e, na primeira vez, uma recompensa (Minotauro: Lâmina Flamejante e +1 frasco,
+  e libera o Cajado na loja; Arquimago: Cajado de Ignar; Arquidemônio: Espada Abissal).
 
 | Arma | Característica |
 |---|---|
@@ -60,7 +103,10 @@ e escreve a fala do chefe e uma dica.
 | Lança da Sentinela | alcance longo |
 | Machado do Carrasco | lento e pesado, quebra postura |
 | Lâmina Flamejante | incendeia (dano contínuo) |
-| Cajado Arcano | dispara magia à distância |
+| Cajado Arcano | dispara magia à distância (dano cresce com a Fé) |
+| Punhos | só do Guilherme: rápidos e fracos |
+| Cajado de Ignar | magia que incendeia (recompensa do Arquimago) |
+| Espada Abissal | a mais pesada; quebra qualquer guarda (recompensa do Arquidemônio) |
 
 Escudos: madeira (absorve 60%), ferro (85%), torre (100%, mas pesado). Itens rápidos: erva (regenera vida),
 bomba (explosão em arco), resina (arma em chamas por 30 s).
@@ -161,6 +207,10 @@ Coloque arquivos **MP3** em `static/audio/` com estes nomes (os que faltarem fic
 | `floresta.mp3` | Floresta dos Sussurros |
 | `cripta.mp3` | Cripta dos Petrificados |
 | `chefe_gorgona.mp3` | luta contra Medrah |
+| `torre.mp3` | Torre das Cinzas |
+| `chefe_arquimago.mp3` | luta contra Ignar |
+| `abismo.mp3` | Abismo Rubro |
+| `chefe_arquidemonio.mp3` | luta contra Azrakh |
 | `vitoria.mp3` | fim da jornada |
 
 As músicas tocam em loop, com transição suave entre cenas. Os navegadores só permitem som depois de

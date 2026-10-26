@@ -5,10 +5,11 @@
 
 const W = 960, H = 540;
 
-// anim: [arquivo, nº de quadros, âncora, coluna?]
+// anim: [arquivo, nº de quadros, âncora, coluna?, linha?]
 // âncora = x do corpo dentro do quadro (medido nos PNGs). Sem ela o personagem "pularia"
 // para o lado ao trocar de animação, porque cada folha tem o corpo num lugar diferente.
 // coluna: nas folhas com várias criaturas lado a lado, a criatura é uma coluna e os quadros descem pelas linhas
+// linha: nas folhas com uma animação por linha (Viking), a animação é uma linha e os quadros andam para a direita
 // qw/qh: tamanho do quadro (padrão 128x128) · pe: linha do quadro onde ficam os pés (padrão: a base)
 // espelhado: o desenho original olha para a ESQUERDA
 const CRIATURAS = "Creatures Pack Free/Sprites";
@@ -21,6 +22,25 @@ const PERSONAGENS = {
     parado: ["Idle", 8, 66], correr: ["Run", 8, 62], pulo: ["Jump", 8, 65], rolar: ["Roll", 4, 65],
     ataque: ["Attacks", 20, 66], mergulho: ["attack_from_air", 8, 64], curar: ["Health", 8, 66],
     rezar: ["Pray", 12, 66], ferido: ["Hurt", 3, 66], morte: ["Death", 4, 66], escalar: ["Climb", 6, 64] } },
+  // Classes jogáveis com outros sprites (as animações que faltam são adaptadas em jogador.js, ver VISUAIS).
+  // O "cavaleiro" acima (pasta person) é o sprite do Lanceiro, recolorido.
+  cavaleiro_armadura: { pasta: "cavaleiro/Spritesheet 128/Knight_1", escala: 1, anims: {
+    parado: ["Idle", 4, 33], correr: ["Run", 7, 32], pulo: ["Jump", 6, 38],
+    ataque1: ["Attack 1", 5, 48], ataque2: ["Attack 2", 4, 46], ataque3: ["Attack 3", 4, 51],
+    defesa: ["Defend", 5, 40], proteger: ["Protect", 1, 41], ferido: ["Hurt", 2, 44], morte: ["Dead", 6, 40] } },
+  viking: { pasta: "Viking", escala: 1.5, qw: 115, qh: 84, pe: 71, anims: {
+    parado: ["Viking-Sheet", 8, 58, null, 0], correr: ["Viking-Sheet", 8, 62, null, 2], pulo: ["Viking-Sheet", 3, 61, null, 6],
+    rolar: ["Viking-Sheet", 7, 58, null, 15], ataque1: ["Viking-Sheet", 4, 58, null, 8], ataque2: ["Viking-Sheet", 4, 58, null, 9],
+    ataque3: ["Viking-Sheet", 4, 58, null, 10], mergulho: ["Viking-Sheet", 6, 60, null, 17], curar: ["Viking-Sheet", 6, 56, null, 18],
+    rezar: ["Viking-Sheet", 2, 59, null, 13], ferido: ["Viking-Sheet", 4, 59, null, 3], morte: ["Viking-Sheet", 12, 67, null, 4],
+    escalar: ["Viking-Sheet", 8, 56, null, 16] } },
+  // Tiras montadas por ferramentas/montar_folhas_guilherme.py a partir dos PNGs avulsos
+  guilherme: { pasta: "guilherme/folhas", escala: 1, qw: 144, qh: 120, pe: 99, anims: {
+    parado: ["idle", 4, 84], correr: ["run", 8, 84], andar: ["walk", 8, 84], pulo: ["jump", 8, 84], rolar: ["roll", 7, 84],
+    ataque: ["attack", 13, 84], ferido: ["hit", 3, 84], morte: ["death", 5, 84] } },
+  girl1: { pasta: "sprint_girl2/Girl_1", escala: 0.95, anims: {
+    parado: ["Idle", 9, 66], correr: ["Walk", 12, 63], ataque: ["Attack", 8, 60],
+    defesa: ["Protection", 4, 68], falar: ["Dialogue", 11, 66] } },
   // NPCs das fogueiras
   mercador: { pasta: "Trader-Character/Trader_1", escala: 1.1, anims: {
     parado: ["Idle", 6, 56], falar: ["Dialogue", 16, 60], aprovar: ["Approval", 8, 67] } },
@@ -42,6 +62,16 @@ const PERSONAGENS = {
     parado: ["Idle", 7, 60], andar: ["Walk", 13, 56], correr: ["Run", 7, 105],
     bote: ["Attack_1", 16, 40], chicote: ["Attack_2", 7, 69], reverso: ["Attack_3", 10, 32],
     especial: ["Special", 5, 57], ferido: ["Hurt", 3, 54], morte: ["Dead", 3, 61] } },
+  // Chefes novos: versões gigantes do mago de fogo e do ArchDemon
+  arquimago: { pasta: "wizard_enemy/Fire vizard", escala: 1.7, anims: {
+    parado: ["Idle", 7, 48], andar: ["Walk", 6, 60], correr: ["Run", 8, 51],
+    golpe1: ["Attack_1", 4, 60], golpe2: ["Attack_2", 4, 60], bola: ["Fireball", 8, 52], chama: ["Flame_jet", 14, 42],
+    ferido: ["Hurt", 3, 48], morte: ["Dead", 6, 44] } },
+  // pe 98: os pés do desenho ficam ~45 px acima do chão (ele flutua)
+  arquidemonio: { pasta: "ArchDemon/SpriteSheets", escala: 2.3, pe: 98, anims: {
+    parado: ["ArchDemonIdle001-Sheet", 6, 64], andar: ["ArchDemonIdle001-Sheet", 6, 64],
+    ataque: ["ArchDemonBasicAtk001-Sheet", 20, 64], ferido: ["ArchDemonHurt001-Sheet", 4, 63],
+    morte: ["ArchDemonDeath001-Sheet", 7, 66] } },
   guerreiro: { pasta: "esqueleto_2/Skeleton_Warrior", escala: 1, anims: {
     parado: ["Idle", 7, 64], andar: ["Walk", 7, 70], ataque: ["Attack_1", 5, 52],
     ferido: ["Hurt", 2, 63], morte: ["Dead", 4, 62], defesa: ["Protect", 1, 66] } },
@@ -136,10 +166,16 @@ const CENARIOS = {
   salao: { pasta: "Battleground2/Bright", camadas: [
     ["bg", 0], ["mountaims", 0.1], ["wall@windows", 0.5], ["columns&falgs", 0.55], ["candeliar", 0.6],
     ["floor", 1], ["dragon", 0.9, "unico"]] },
+  salao_palido: { pasta: "Battleground2/Pale", camadas: [
+    ["bg", 0], ["mountaims", 0.1], ["wall@windows", 0.5], ["columns&falgs", 0.55], ["candeliar", 0.6],
+    ["floor", 1], ["dragon", 0.9, "unico"]] },
   floresta: { pasta: "Battleground3/Bright", camadas: [
     ["sky", 0], ["jungle_bg", 0.15], ["trees&bushes", 0.35], ["grasses", 0.55], ["grass&road", 1],
     ["lianas", 0.8], ["tree_face", 0.9, "unico"], ["fireflys", 1.1, "frente"]] },
   cripta: { pasta: "Battleground4/Bright", camadas: [
+    ["sky", 0], ["graves", 0.2], ["back_trees", 0.3], ["crypt", 0.5, "unico"], ["wall", 0.6],
+    ["ground", 1], ["tree", 0.9, "unico"], ["bones", 1]] },
+  cripta_palida: { pasta: "Battleground4/Pale", camadas: [
     ["sky", 0], ["graves", 0.2], ["back_trees", 0.3], ["crypt", 0.5, "unico"], ["wall", 0.6],
     ["ground", 1], ["tree", 0.9, "unico"], ["bones", 1]] },
 };
@@ -170,11 +206,11 @@ export function carregarSprites() {
   const tingidas = {};  // a mesma imagem (folha de criaturas) é usada por várias animações: tinge só uma vez
   for (const [nome, def] of Object.entries(PERSONAGENS)) {
     const qw = def.qw || 128, qh = def.qh || 128;
-    for (const [anim, [arquivo, n, ancora, coluna]] of Object.entries(def.anims)) {
+    for (const [anim, [arquivo, n, ancora, coluna, linha]] of Object.entries(def.anims)) {
       const caminho = `${def.pasta}/${arquivo}.png`;
       p.push(carregar(caminho).then((img) => {
         tingidas[caminho] ||= { branco: tingir(img, "#ffffff"), vermelho: tingir(img, "#ff2a1a"), pedra: tingir(img, "#8f8b80") };
-        folhas[`${nome}/${anim}`] = { img, n, ancora, qw, qh, coluna, pe: def.pe || qh, espelhado: !!def.espelhado,
+        folhas[`${nome}/${anim}`] = { img, n, ancora, qw, qh, coluna, linha, pe: def.pe || qh, espelhado: !!def.espelhado,
           cols: Math.max(1, Math.floor(img.width / qw)), ...tingidas[caminho] };
       }));
     }
@@ -238,14 +274,16 @@ export const nQuadrosEfeito = (nome) => EFEITOS[nome].arquivos.length;
 
 /**
  * Desenha um quadro de personagem com os pés em (x, y).
- * opts: dir (1 direita, -1 esquerda), alpha, branco/vermelho/pedra (0..1, cor por cima), rot (radianos), pivo (altura do giro)
+ * opts: dir (1 direita, -1 esquerda), alpha, branco/vermelho/pedra (0..1, cor por cima), rot (radianos), pivo (altura do giro),
+ *       filtro (filtro CSS do canvas, ex.: "hue-rotate(190deg)" para recolorir)
  */
 export function desenharSprite(ctx, nome, anim, quadro, x, y, opts = {}) {
-  const { dir = 1, alpha = 1, branco = 0, vermelho = 0, pedra = 0, rot = 0, pivo = 36 } = opts;
+  const { dir = 1, alpha = 1, branco = 0, vermelho = 0, pedra = 0, rot = 0, pivo = 36, filtro = null } = opts;
   const s = folhas[`${nome}/${anim}`];
   const escala = PERSONAGENS[nome].escala;
   ctx.save();
   ctx.globalAlpha *= alpha;
+  if (filtro) ctx.filter = filtro;
   ctx.translate(Math.round(x), Math.round(y));
   if (rot) { ctx.translate(0, -pivo * escala); ctx.rotate(rot); ctx.translate(0, pivo * escala); }
   ctx.scale(dir * escala * (s?.espelhado ? -1 : 1), escala);
@@ -256,11 +294,12 @@ export function desenharSprite(ctx, nome, anim, quadro, x, y, opts = {}) {
   }
   ctx.imageSmoothingEnabled = false;  // pixel art nítida
   const q = Math.max(0, Math.min(s.n - 1, Math.floor(quadro)));
-  // Quadro q: numa coluna fixa (folhas de criaturas) ou numa grade de "cols" colunas (tiras e grades)
-  const sx = s.coluna != null ? s.coluna * s.qw : (q % s.cols) * s.qw;
-  const sy = s.coluna != null ? q * s.qh : Math.floor(q / s.cols) * s.qh;
+  // Quadro q: numa coluna fixa (criaturas), numa linha fixa (Viking) ou numa grade de "cols" colunas (tiras e grades)
+  const sx = s.coluna != null ? s.coluna * s.qw : s.linha != null ? q * s.qw : (q % s.cols) * s.qw;
+  const sy = s.coluna != null ? q * s.qh : s.linha != null ? s.linha * s.qh : Math.floor(q / s.cols) * s.qh;
   const desenhar = (fonte) => ctx.drawImage(fonte, sx, sy, s.qw, s.qh, -s.ancora, -s.pe, s.qw, s.qh);
   desenhar(s.img);
+  if (filtro) ctx.filter = "none";  // o flash de dano continua vermelho/branco de verdade
   const a = ctx.globalAlpha;
   for (const [fonte, forca] of [[s.pedra, pedra], [s.vermelho, vermelho], [s.branco, branco]]) {
     if (forca > 0) { ctx.globalAlpha = a * forca; desenhar(fonte); }

@@ -8,7 +8,8 @@ import { novoBoss, nomeDoChefe, atualizarBoss, atualizarOndas, desenharBoss, des
 import { novoInimigo, atualizarInimigos, desenharInimigos, alvejavel } from "./inimigos.js";
 import { carregarSprites, desenharCenario, desenharEfeito, desenharSprite, desenharIcone, desenharBarra, ciclo, nQuadros } from "./sprites.js";
 import { atualizarEfeitos, desenharEfeitos } from "./efeitos.js";
-import { desenharMundo, gerarDecoracao, pisoEm } from "./mundo.js";
+import { desenharMundo, gerarDecoracao, pisoEm, TEMAS } from "./mundo.js";
+import { iniciarAmbiente, atualizarAmbiente, desenharAmbiente } from "./ambiente.js";
 import { FASES, ARENAS } from "./fases.js";
 import { carregarSons, som, ambienteLigado } from "./sons.js";
 
@@ -68,6 +69,7 @@ export function iniciarFase(id, callbacks, inicioX = 120, contexto = null) {
   jogo.itensNoChao = (f.itens || []).filter(([, x]) => x > inicioX).map(([item, x, altura]) => ({ item, x, y: CHAO - altura, t: 0 }));
   jogo.decoracao = gerarDecoracao(f.tema, f.largura);
   jogo.cam = Math.max(0, Math.min(jogo.mundoW - W, inicioX - W * 0.4));
+  iniciarAmbiente(jogo, TEMAS[f.tema]?.clima);
   jogo.aviso = { txt: f.nome, vida: 4, total: 4, cor: "#d8cfb8" };
   som("area");
 }
@@ -79,6 +81,7 @@ export function iniciarLuta(chefe, estrategia, fala, aoTerminar, contexto = null
   jogo.jogador = novaJogadora(180);
   configurarJogadora(jogo.jogador, jogo.personagem, jogo.catalogo);
   jogo.boss = novoBoss(chefe, estrategia);
+  iniciarAmbiente(jogo, ARENAS[chefe].clima);
   if (fala) jogo.legenda = { txt: fala, vida: 7 };
 }
 
@@ -134,6 +137,7 @@ function atualizar(dt) {
   atualizarColetaveis(jogo, dt);
   if (jogo.modo === "fase") atualizarFase(jogo, dt);
   atualizarEfeitos(dt);
+  atualizarAmbiente(dt);
 
   for (const p of jogo.particulas) { p.vy += 600 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vida -= dt; }
   jogo.particulas = jogo.particulas.filter((p) => p.vida > 0);
@@ -301,7 +305,13 @@ function desenhar() {
   ctx.save();
   if (jogo.tremor > 0.5) ctx.translate((Math.random() - 0.5) * jogo.tremor, (Math.random() - 0.5) * jogo.tremor);
   desenharCenario(ctx, jogo.cenario, jogo.cam);
-  if (jogo.fase?.tinta) { ctx.fillStyle = jogo.fase.tinta; ctx.fillRect(0, 0, W, H); }  // clima de cada fase
+  if (jogo.fase?.tinta) {
+    // Cor de cada fase sobre o fundo ("multiply" tinge o fundo inteiro, ex.: o vermelho do Abismo Rubro)
+    ctx.save();
+    if (jogo.fase.mistura) ctx.globalCompositeOperation = jogo.fase.mistura;
+    ctx.fillStyle = jogo.fase.tinta; ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.translate(-Math.round(jogo.cam), 0);  // daqui em diante: coordenadas do mundo
@@ -316,6 +326,7 @@ function desenhar() {
   desenharJogadora(ctx, jogo.jogador, jogo.t);
   desenharArmasDaJogadora(ctx);
   desenharEfeitos(ctx);
+  desenharAmbiente(ctx);
   for (const p of jogo.particulas) {
     ctx.globalAlpha = Math.min(1, p.vida * 2); ctx.fillStyle = p.cor;
     ctx.fillRect(p.x, p.y, p.tam, p.tam);

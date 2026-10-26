@@ -24,6 +24,8 @@ COMO_EVITAR = {
         "investida": "role NA DIREÇÃO dele quando o machado recuar; não dá para fugir correndo",
         "especial": "role no momento em que ele começa a cair do salto, não quando pula",
         "onda": "pule a onda de choque",
+        "giro": "quando ele gira o machado, afaste-se andando para trás; no fim ele fica tonto: é a hora de atacar",
+        "desabamento": "quando o teto treme, saia de cima das sombras no chão",
         "reverso": "depois de rolar por dentro dele, role de novo ou se afaste",
     },
     "gorgona": {
@@ -32,7 +34,30 @@ COMO_EVITAR = {
         "combo3": "a terceira chicotada pode vir atrasada: espere a cauda girar",
         "investida": "quando ela se enrola no chão, o bote vem: role na direção dela",
         "especial": "o olhar viaja pelo chão na altura do peito: pule por cima ou role através dele",
+        "veneno": "as bolas de veneno caem antes, em cima e depois de você: avance para perto dela ou saia da poça",
+        "varredura": "quando ela se enrola e a cauda brilha, PULE: a cauda varre o chão dos dois lados",
         "reverso": "depois de rolar por dentro dela, role de novo ou se afaste",
+    },
+    "arquimago": {
+        "combo1": "o cajado alcança longe: afaste-se ou role no brilho da mão",
+        "combo2": "são três golpes de cajado: não pare de esquivar no segundo",
+        "combo3": "o terceiro golpe pode vir atrasado: espere o cajado descer",
+        "investida": "quando ele dispara envolto em chamas, role NA DIREÇÃO dele",
+        "especial": "o jato de chamas dura mais que uma rolagem: fique ATRÁS dele ou a mais de 4 passos",
+        "chuva": "na fase 2 cai fogo do céu onde você está: continue se movendo",
+        "bolas": "as três bolas de fogo vêm coladas na altura do peito: role através delas quando a primeira chegar perto",
+        "teleporte": "quando ele some em fumaça, ele volta nas suas COSTAS: vire-se ou role para frente",
+        "reverso": "depois de rolar por dentro dele, role de novo ou se afaste",
+    },
+    "arquidemonio": {
+        "combo1": "as garras alcançam longe: afaste-se ou role no brilho",
+        "combo2": "são três golpes: não pare de esquivar no segundo",
+        "combo3": "o terceiro golpe pode vir atrasado: espere a garra descer",
+        "investida": "quando ele recua no ar, vem um mergulho: role NA DIREÇÃO dele",
+        "especial": "sombras roxas no chão marcam onde as esferas vão cair: saia de cima delas",
+        "rajada": "as cinco esferas vêm em leque de cima: role através delas ou corra por baixo dele",
+        "pilares": "rachaduras roxas avançam pelo chão até você: role através do pilar quando ele brotar",
+        "reverso": "depois de rolar por dentro dele, role de novo ou se afaste",
     },
 }
 
@@ -40,14 +65,36 @@ GOLPES = {
     "minotauro": """Golpes de Morvath, o Guardião Esquecido (um minotauro com um machado enorme):
 - combo: três machadadas à frente. O terceiro golpe pode vir atrasado (atraso_terceiro_golpe). Só de perto.
 - investida: recua o machado e avança em alta velocidade pela arena. Boa contra quem fica longe ou cura.
-- especial (salto): pula até onde o jogador VAI estar e, ao cair, solta ondas de choque nos dois lados.
+- especiais (peso_especial decide a frequência; ele escolhe conforme a distância):
+  - salto (de longe): pula até onde o jogador VAI estar e, ao cair, solta ondas de choque nos dois lados.
+  - giro (de perto): gira o machado avançando por ~1 s, acertando dos dois lados; depois fica tonto.
+  - desabamento (só na fase 2): bate no chão e pedras caem do teto nas sombras marcadas.
 - reverso: golpe rápido para trás, contra quem rola por dentro (punir_rolagem="para_frente").""",
     "gorgona": """Golpes de Medrah, a Górgona (meio mulher, meio serpente, com cobras no lugar do cabelo):
 - combo: três chicotadas de cauda à frente. A terceira pode vir atrasada (atraso_terceiro_golpe). Só de perto.
 - investida (bote): se enrola no chão e dá um bote longo pela arena. Boa contra quem fica longe ou cura.
-- especial (olhar petrificante): uma onda de energia viaja pelo chão na altura do peito. Quem é atingido
-  fica PETRIFICADO por um instante (sem poder agir). Dá para pular por cima ou rolar através dela.
+- especiais (peso_especial decide a frequência; ela escolhe conforme a distância):
+  - olhar petrificante: uma onda viaja pelo chão na altura do peito; quem é atingido fica PETRIFICADO.
+  - veneno (de longe): cospe três bolas em arco; onde caem fica uma poça venenosa por alguns segundos.
+  - varredura (de perto): a cauda varre o chão dos dois lados, bem longe; só escapa quem pula.
 - reverso: chicotada para trás, contra quem rola por dentro (punir_rolagem="para_frente").""",
+    "arquimago": """Golpes de Ignar, o Arquimago (um feiticeiro de fogo gigante, com cajado):
+- combo: três golpes de cajado à frente. O terceiro pode vir atrasado (atraso_terceiro_golpe). Só de perto.
+- investida: dispara pela arena envolto em chamas. Boa contra quem fica longe ou cura.
+- especiais (peso_especial decide a frequência; ele escolhe conforme a distância):
+  - jato de chamas (de perto): fogo à frente por ~1 s, mais do que uma rolagem protege.
+  - bolas de fogo (de longe): três bolas coladas em linha reta na altura do peito.
+  - teleporte: some em fumaça e reaparece nas costas do jogador, já golpeando.
+  - chuva de fogo (só na fase 2): bolas caem nas sombras marcadas perto do jogador.
+- reverso: golpe rápido para trás, contra quem rola por dentro (punir_rolagem="para_frente").""",
+    "arquidemonio": """Golpes de Azrakh, o Arquidemônio (um demônio voador, chefe final):
+- combo: três golpes de garra sombria à frente. O terceiro pode vir atrasado (atraso_terceiro_golpe). Só de perto.
+- investida (mergulho): recua no ar e mergulha pela arena. Boa contra quem fica longe ou cura.
+- especiais (peso_especial decide a frequência; ele escolhe conforme a distância):
+  - chuva sombria: marca sombras no chão perto do jogador e esferas caem nelas (3 na fase 1, 5 na fase 2).
+  - rajada (de longe): cinco esferas sombrias em leque, disparadas do alto.
+  - pilares (de perto): pilares de sombra brotam do chão em sequência, dele até o jogador.
+- reverso: golpe rápido para trás, contra quem rola por dentro (punir_rolagem="para_frente").""",
 }
 
 PARAMETROS = """

@@ -54,6 +54,7 @@ export function abrirMenu({ raiz, estado, api, aba = "descansar", chefe = null, 
       case "descansar":
         return `<p class="fala">O calor da fogueira fecha suas feridas. Vida, fôlego e frascos restaurados.</p>
           <div class="ficha">
+            <div>${esc(cat.classes?.[p.classe]?.nome || "")} · nível ${p.nivel}</div>
             <div>Vigor ${p.atributos.vigor} · Fôlego ${p.atributos.folego} · Força ${p.atributos.forca} · Fé ${p.atributos.fe}</div>
             <div>${esc(cat.armas[p.arma].nome)} +${p.armas[p.arma]} · ${esc(cat.escudos[p.escudo].nome)} · ${p.frascos_max} frascos (+${p.cura_extra} de cura)</div>
             ${p.almas_perdidas ? `<div class="aviso-almas">Suas ${p.almas_perdidas.qtd} almas esperam onde você caiu.</div>` : ""}
