@@ -1,4 +1,4 @@
-# ⚔️ Cinzas de Morvath
+# ⚔️ Cinzas de Morgorth
 
 Souls-like 2D no navegador em que **os chefes aprendem com as suas mortes**.
 
@@ -12,8 +12,8 @@ e escreve a fala do chefe e uma dica.
 
 | # | Cena | Cenário | O que tem |
 |---|---|---|---|
-| 1 | Ruínas de Morvath | Battleground 1 | esqueletos guerreiros, lanceiros e arqueiros; plataformas, caixas, pilares |
-| 2 | **Morvath, o Guardião** | Battleground 1 (pálido) | chefe minotauro com machado |
+| 1 | Ruínas de Morgorth | Battleground 1 | esqueletos guerreiros, lanceiros e arqueiros; plataformas, caixas, pilares |
+| 2 | **Morgorth, o Guardião** | Battleground 1 (pálido) | chefe minotauro com machado |
 | 3 | Floresta dos Sussurros | Battleground 3 | magos de fogo, do raio e errantes + esqueletos |
 | 4 | Cripta dos Petrificados | Battleground 4 | todos os inimigos, a fase mais longa |
 | 5 | **Medrah, a Górgona** | Battleground 2 | chefe górgona com olhar petrificante |
@@ -202,8 +202,8 @@ Coloque arquivos **MP3** em `static/audio/` com estes nomes (os que faltarem fic
 
 | Arquivo | Toca em |
 |---|---|
-| `ruinas.mp3` | Ruínas de Morvath |
-| `chefe_minotauro.mp3` | luta contra Morvath |
+| `ruinas.mp3` | Ruínas de Morgorth |
+| `chefe_minotauro.mp3` | luta contra Morgorth |
 | `floresta.mp3` | Floresta dos Sussurros |
 | `cripta.mp3` | Cripta dos Petrificados |
 | `chefe_gorgona.mp3` | luta contra Medrah |
