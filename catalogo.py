@@ -103,7 +103,8 @@ CLASSES = {
     },
     "fresco": {
         "nome": "Fresco", "sprite": "girl1", "filtro": None,
-        "descricao": "Maga com cajado. Ataca de longe com esferas arcanas que crescem com a Fé; frágil de perto.",
+        "descricao": "Maga com cajado. Ataca de longe com esferas arcanas que crescem com a Fé, até no ar; frágil de perto.",
+        "mergulho": False,           # não tem o ataque mergulho: no ar, lança magia
         "atributos": {"vigor": 1, "folego": 2, "forca": 1, "fe": 4},
         "arma": "cajado", "escudo": "nenhum", "armas": {"cajado": 0}, "escudos": ["nenhum"],
         "consumiveis": {"erva": 3, "resina": 1},
@@ -129,9 +130,16 @@ PERSONAGEM_INICIAL = {
     "frascos_max": 3, "cura_extra": 0,
     "almas_perdidas": None,          # {"cena", "x", "qtd"}: recupere tocando no local da morte
     "desconto": None,                # {"item", "percentual", "motivo"}: dado pelo mercador (IA)
+    "ciclo": 0,                      # jornadas completas (Novo Jogo+): inimigos mais fortes e numerosos a cada uma
+    "jornada_completa": False,       # venceu o último chefe neste ciclo: pode começar o próximo
 }
 
 MELHORIA_MAX = 5
+
+
+def bonus_ciclo(ciclo: int) -> float:
+    """Novo Jogo+: as almas crescem 25% por ciclo (a força dos inimigos fica no navegador, static/jogo.js)."""
+    return 1 + 0.25 * ciclo
 
 
 def custo_nivel(nivel: int) -> int:

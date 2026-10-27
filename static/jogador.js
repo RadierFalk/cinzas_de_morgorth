@@ -30,6 +30,7 @@ export const COMBO = [
 ];
 // Ataque no ar: desce com a espada para baixo. A ponta da espada passa pela cabeça de quem está embaixo.
 const MERGULHO = { dano: 14, velQueda: 650, impacto: 6, raioImpacto: 60, durImpacto: 0.3 };
+const MAGIA_AR = 0.3;  // duração da magia lançada no ar (cajado)
 const ITENS_RAPIDOS = ["erva", "bomba", "resina"];
 
 export function novaJogadora(x) {
@@ -37,7 +38,7 @@ export function novaJogadora(x) {
     x, y: CHAO, vx: 0, vy: 0, w: 24, h: 66, dir: 1, noChao: true,
     hp: 100, hpMax: 100, hpFantasma: 100, est: 100, estMax: 100, estDelay: 0, frascos: 3,
     estado: "livre", tEstado: 0, invul: 0, semFolego: 0, janelaCombo: 0, proximoGolpe: 0, passo: 0,
-    bloqueando: false, itemSel: 0, regen: 0, resina: 0,
+    bloqueando: false, itemSel: 0, regen: 0, resina: 0, mergulho: true,
     stats: statsPadrao(), visual: { sprite: "cavaleiro", filtro: null },
   };
 }
@@ -58,6 +59,7 @@ export function configurarJogadora(j, personagem, catalogo, encher = true) {
   const escudo = catalogo.escudos[personagem.escudo];
   const classe = catalogo.classes?.[personagem.classe];
   j.visual = { sprite: classe?.sprite || "cavaleiro", filtro: classe?.filtro || null };
+  j.mergulho = classe?.mergulho !== false;  // o Fresco não mergulha: no ar, lança magia
   j.hpMax = 100 + 8 * (a.vigor - 1);
   j.estMax = 100 + 6 * (a.folego - 1);
   j.frascosMax = personagem.frascos_max;
@@ -162,9 +164,17 @@ export function atualizarJogadora(dt) {
           }
         }
       } else if (consumir("atacar")) {
-        if (!j.noChao) {
-          // No ar: ataque mergulho
-          if (temFolego(j, P.custoMergulho)) {
+        if (!j.noChao && j.stats.magia) {
+          // No ar com cajado: lança a magia sem parar de cair (o mesmo golpe do 1º do combo)
+          const custo = Math.round(COMBO[0].custo * j.stats.folego);
+          if (temFolego(j, custo)) {
+            mudar(j, "magia_ar"); gastar(j, custo);
+            dispararMagia(j, COMBO[0].dano);
+            jogo.log.ataques.erros++;  // como no chão: a esfera conta como ataque, o acerto dela não é rastreado
+          }
+        } else if (!j.noChao) {
+          // No ar: ataque mergulho (quem não tem, como o Fresco, não faz nada)
+          if (j.mergulho && temFolego(j, P.custoMergulho)) {
             mudar(j, "mergulho"); gastar(j, P.custoMergulho);
             j.acertados = new Set(); j.impacto = false;
             j.vy = MERGULHO.velQueda; j.vx *= 0.3;
@@ -265,6 +275,13 @@ export function atualizarJogadora(dt) {
       }
       break;
 
+    case "magia_ar":
+      // Continua caindo e dá para se mover; ao terminar, pode lançar outra se ainda estiver no ar
+      j.vx = mover * P.vel;
+      if (mover) j.dir = mover;
+      if (j.tEstado >= MAGIA_AR || j.noChao) mudar(j, "livre");
+      break;
+
     case "curar":
       j.vx = mover * 50;
       if (!j.curou && j.tEstado >= P.curarMomento) {
@@ -314,7 +331,7 @@ export function atualizarJogadora(dt) {
 
   // Fôlego (stamina): só enche fora de ações cansativas e depois de uma pausa; bloqueando enche mais devagar
   if (j.estDelay > 0) j.estDelay -= dt;
-  else if (!["rolar", "ataque", "mergulho"].includes(j.estado)) {
+  else if (!["rolar", "ataque", "mergulho", "magia_ar"].includes(j.estado)) {
     j.est = Math.min(j.estMax, j.est + P.regenEst * (j.bloqueando ? 0.35 : 1) * dt);
   }
   j.hpFantasma = Math.max(j.hp, j.hpFantasma - 30 * dt);
@@ -397,6 +414,7 @@ export function rezar(j) { mudar(j, "rezar"); j.vx = 0; }
 export function ferirJogadora(dano, origem, empurrao, opts = {}) {
   const jogo = estado.jogo, j = jogo.jogador;
   if (invulneravel(j)) return false;
+  dano = Math.round(dano * (jogo.dificuldade?.dano || 1));  // Novo Jogo+: tudo bate mais forte a cada ciclo
   const escudo = j.stats.escudo;
   if (j.bloqueando && escudo && !opts.inbloqueavel && empurrao === -j.dir) {
     const custo = dano * escudo.custo * 1.6;
@@ -472,6 +490,7 @@ function quadroJogadora(j, t) {
       return ["ataque", pela(q.recuperar, j.tEstado - g.preparo - g.ativo, g.recuperar)];
     }
     case "mergulho": return ["mergulho", j.impacto ? pela([3, 4, 5, 6], j.tEstado, MERGULHO.durImpacto) : ciclo(t, 14, 3)];
+    case "magia_ar": return ["ataque", pela([2, 3, 4, 5], j.tEstado, MAGIA_AR)];
     case "curar": return ["curar", pela([0, 1, 2, 3, 4, 5, 6, 7], j.tEstado, P.curarDur)];
     case "rezar": return ["rezar", pela([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], j.tEstado, P.rezarDur)];
     case "atingido": return ["ferido", pela([0, 1, 2], j.tEstado, 0.38)];

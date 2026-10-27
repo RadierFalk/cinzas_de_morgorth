@@ -152,9 +152,24 @@ const proxima = (cena) => CENAS[CENAS.indexOf(cena) + 1] || null;
 const contexto = () => ({ personagem: estado.personagem, catalogo: estado.catalogo });
 
 function atualizarInfo() {
-  const mortes = CHEFES.reduce((s, c) => s + estado.chefes[c].mortes, 0);
-  $("info").textContent = `${estado.usuario} · ${NOMES[estado.cena]} · nível ${estado.personagem.nivel} · mortes em chefes: ${mortes}`;
+  const mortes = CHEFES.reduce((s, c) => s + estado.chefes[c].mortes, 0), ciclo = estado.personagem.ciclo || 0;
+  $("info").textContent = `${estado.usuario} · ${NOMES[estado.cena]}${ciclo ? ` · ciclo ${ciclo + 1}` : ""} · nível ${estado.personagem.nivel} · mortes em chefes: ${mortes}`;
 }
+
+/** Novo Jogo+: depois de vencer o último chefe, volta às Ruínas com inimigos mais fortes e numerosos. */
+async function novoCiclo() {
+  try {
+    const r = await api("/api/ciclo/novo", {});
+    Object.assign(estado, { personagem: r.personagem, loja: r.loja, custo_nivel: r.custo_nivel, custo_melhoria: r.custo_melhoria });
+    estado.cena = CENAS[0];
+    fogueiraDoMeio = null;
+    atualizarInfo();
+    jogar(CENAS[0]);
+  } catch (err) { alert(err.message); }
+}
+// Texto do botão: o ciclo que vai começar (o 1º é a primeira jornada)
+const botaoNovoCiclo = () => `<button id="ciclo">Novo Jogo+ · Ciclo ${(estado.personagem.ciclo || 0) + 2}</button>`;
+function ligarNovoCiclo() { if ($("ciclo")) $("ciclo").onclick = () => { som("clique"); novoCiclo(); }; }
 
 function trilha(atual) {
   const i = CENAS.indexOf(atual);
@@ -253,9 +268,11 @@ function telaInicial() {
     <p class="titulo-cena">${NOMES[cena].toUpperCase()}</p>
     ${chefe ? `<p class="fala">“${esc(estado.chefes[cena].fala)}”</p>` : ""}
     ${trilha(cena)}
-    <div class="botoes"><button id="acao">${cena === "ruinas" ? "Começar" : "Continuar"}</button><button id="fogueira">🔥 Fogueira</button></div>
+    <div class="botoes"><button id="acao">${cena === "ruinas" ? "Começar" : "Continuar"}</button>
+      ${estado.personagem.jornada_completa ? botaoNovoCiclo() : ""}<button id="fogueira">🔥 Fogueira</button></div>
     ${cena !== "ruinas" ? `<a href="#" id="recomecar">recomeçar a jornada do início</a>` : ""}`, () => jogar(cena));
   if ($("recomecar")) $("recomecar").onclick = async (e) => { e.preventDefault(); await salvarCena("ruinas"); telaInicial(); };
+  ligarNovoCiclo();
 }
 
 function jogar(cena) {
@@ -346,9 +363,11 @@ async function aoFimDaLuta(chefe, log, x) {
     som("vitoria");
     mostrarPainel(`<p class="titulo-cena">A JORNADA TERMINOU</p>` + ganhos + relatorio +
       `<p class="fala">Os guardiões caíram. Mas eles se lembram de você.</p>
-      <div class="botoes"><button id="acao">Enfrentar ${nome} de novo</button>${fogueiraBtn}</div>
-      <a href="#" id="recomecar">recomeçar a jornada do início</a>`, () => jogar(chefe));
-    $("recomecar").onclick = async (e) => { e.preventDefault(); await salvarCena("ruinas"); telaInicial(); };
+      <p class="mudancas">No Novo Jogo+ você mantém nível, almas e equipamento, mas os inimigos voltam com mais vida,
+      mais dano e em maior número, e ficam mais fortes a cada ciclo.</p>
+      <div class="botoes"><button id="acao">Enfrentar ${nome} de novo</button>${botaoNovoCiclo()}${fogueiraBtn}</div>`,
+      () => jogar(chefe));
+    ligarNovoCiclo();
   }
 }
 

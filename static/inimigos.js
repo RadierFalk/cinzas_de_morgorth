@@ -100,8 +100,8 @@ const TIPOS = {
 const DROPS = [["erva", 0.12], ["bomba", 0.05]];  // chance de deixar cair cada item
 
 export function novoInimigo(tipo, x, y) {
-  const t = TIPOS[tipo];
-  const e = { tipo, x, y, vx: 0, vy: 0, w: t.w || 28, h: t.h || 60, dir: -1, hp: t.hp, hpMax: t.hp,
+  const t = TIPOS[tipo], hp = Math.round(t.hp * (estado.jogo.dificuldade?.vida || 1));  // mais vida a cada ciclo
+  const e = { tipo, x, y, vx: 0, vy: 0, w: t.w || 28, h: t.h || 60, dir: -1, hp, hpMax: hp,
     estado: t.surge ? "escondido" : "parado", tEstado: 0, etapa: null, ataque: null, cd: 0, cdFuga: 0, flash: 0,
     golpesSofridos: 0, queimando: 0, tickQueima: 0, t: Math.random() * 5, origemX: x };
   if (t.voa) { e.y = y - 90; e.limites = [x - 600, x + 600]; }
@@ -153,9 +153,10 @@ function morrer(e) {
   e.hp = 0; mudar(e, "morto"); e.queimando = 0;
   if (!tipo.surge) efeito("fumaca", e.x, e.y, { escala: 0.8, fps: 12 });
   som(["guerreiro", "lanceiro", "arqueiro"].includes(e.tipo) ? "osso" : "morte_mago", e.x);
-  // Almas e, às vezes, um item
-  jogo.almasGanhas = (jogo.almasGanhas || 0) + tipo.almas;
-  texto(e.x, e.y - e.h - 34, `+${tipo.almas} almas`, "#8fe3ff", 14);
+  // Almas (mais a cada ciclo) e, às vezes, um item
+  const almas = Math.round(tipo.almas * (jogo.dificuldade?.almas || 1));
+  jogo.almasGanhas = (jogo.almasGanhas || 0) + almas;
+  texto(e.x, e.y - e.h - 34, `+${almas} almas`, "#8fe3ff", 14);
   som("almas", e.x);
   for (const [item, chance] of DROPS) {
     if (Math.random() < chance) { jogo.itensNoChao.push({ item, x: e.x, y: tipo.voa ? pisoEm(e.x, e.y) : e.y, t: 0 }); break; }

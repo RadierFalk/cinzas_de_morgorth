@@ -53,7 +53,7 @@ Uma conta nova escolhe a classe antes de começar (não dá para trocar depois; 
 | Cavaleiro | `cavaleiro/Spritesheet 128/Knight_1` | espada + escudo de madeira, 2 ervas, 1 bomba | 3 / 2 / 2 / 1 |
 | Lanceiro | `person`, recolorido | lança, 3 ervas, 1 bomba | 2 / 4 / 2 / 1 |
 | Viking | `Viking/Viking-Sheet` | machado + escudo de madeira, 2 ervas | 3 / 2 / 4 / 0 |
-| Fresco | `sprint_girl2/Girl_1` (arremessa um livro) | cajado (esferas que crescem com a **Fé**), 3 ervas, 1 resina | 1 / 2 / 1 / 4 |
+| Fresco | `sprint_girl2/Girl_1` (arremessa um livro) | cajado (esferas que crescem com a **Fé**; **sem mergulho: lança magia no ar**), 3 ervas, 1 resina | 1 / 2 / 1 / 4 |
 | Guilherme | `guilherme` (boneco de palito) | punhos e nada mais | 0 / 0 / 0 / 0 |
 
 As classes ficam em `catalogo.py` (`CLASSES`). As animações de cada sprite são ligadas às do jogo em
@@ -63,12 +63,38 @@ viram tiras com `python ferramentas/montar_folhas_guilherme.py` (as tiras já es
 
 - Cada fase tem uma **fogueira no meio** (morrer depois de acendê-la recomeça dali, nesta sessão) e uma
   **no fim**, que salva o progresso no servidor. A névoa leva à próxima cena.
+- **Acender ou descansar numa fogueira faz todos os inimigos da fase voltarem**, como nos souls (menos os que
+  nasceriam a até 300 px da fogueira). Morrer e recomeçar também traz todos de volta.
 - Vencer um chefe libera a cena seguinte. Morrer para um chefe recomeça a luta (com o chefe já adaptado).
-- As fases têm **escadarias, rampas, torres com escada de mão, planaltos, pontes e abismos** (cair é morte).
+- As fases têm **escadarias, rampas, colinas, torres com escada de mão, planaltos, pontes e abismos** (cair é morte).
+- Cada fase tem um **túnel no subsolo**: um corredor escuro com tochas, onde só a sua volta fica iluminada.
+  Dá para passar por baixo ou subir a escada de mão e seguir por cima do teto (onde costuma haver um arqueiro).
+  A Torre tem ameias em dois andares (degraus até o andar de cima).
 - Criaturas (diabretes, lobos sombrios, demônios rubros) **surgem do chão** quando você chega perto, e
   o ArchDemon **voa** e atira esferas sombrias.
 
+### Novo Jogo+ (ciclos)
+
+Vencer o Arquidemônio completa a jornada e libera o botão **Novo Jogo+**. Você volta às Ruínas com o mesmo nível,
+almas e equipamento (e os chefes lembram de você), mas a cada ciclo os inimigos ficam mais fortes:
+
+| Ciclo | Vida dos inimigos e chefes | Dano que eles causam | Quantidade de inimigos | Almas |
+|---|---|---|---|---|
+| 1 (primeira jornada) | ×1 | ×1 | normal | ×1 |
+| 2 | ×1,5 | ×1,3 | +40% | ×1,25 |
+| 3 | ×2 | ×1,6 | +80% | ×1,5 |
+| 4 | ×2,5 | ×1,9 | +120% | ×1,75 |
+| n | +0,5 por ciclo | +0,3 por ciclo | +40% por ciclo (até 3 extras por inimigo) | +0,25 por ciclo |
+
+Os inimigos extras nascem ao lado dos originais, sempre num lugar válido (não em abismos, rampas ou perto das
+fogueiras). O ciclo fica salvo no personagem (`ciclo`, `jornada_completa`), e a regra de quando ele pode
+começar fica no servidor (`personagem.novo_ciclo`, rota `POST /api/ciclo/novo`). A força de cada ciclo fica em
+`dificuldade()`, no `static/jogo.js`.
+
 ## Controles
+
+As teclas aparecem no HUD: o canto superior direito lista os controles (H esconde ou mostra), e cada ícone
+(frasco, arma, escudo, item) leva a tecla que o usa.
 
 | Tecla | Ação |
 |---|---|
@@ -77,11 +103,12 @@ viram tiras com `python ferramentas/montar_folhas_guilherme.py` (as tiras já es
 | W / S perto de uma escada | subir / descer a escada de mão (Espaço solta) |
 | S / ↓ | descer da plataforma |
 | Shift (ou K) | rolar, invencível durante parte da rolagem |
-| J (ou clique) | atacar (combo de 3 golpes); **no ar: ataque mergulho** |
+| J (ou clique) | atacar (combo de 3 golpes); **no ar: ataque mergulho** (com cajado: lança magia no ar; o Fresco não mergulha) |
 | L (ou botão direito) | bloquear com o escudo (de frente; gasta fôlego) |
 | F | beber frasco (as fogueiras recarregam) |
 | Q / R | usar / trocar o item rápido (erva, bomba, resina) |
-| E | falar com NPC (guardiã, mercador, ferreiro, cavaleiro) |
+| E | falar com NPC (guardiã, mercador, ferreiro, cavaleiro) ou descansar na fogueira (os inimigos voltam) |
+| H | mostrar/esconder a lista de controles no HUD |
 | M / N | ligar/desligar a música / os efeitos sonoros |
 
 ## Progressão (almas, nível, loja, ferreiro)

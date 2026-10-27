@@ -5,9 +5,13 @@
 //   muro(x) / coluna(x)               obstáculos baixos (88x48 / 33x65): pule por cima
 //   planalto(x1, x2, altura)          estrutura de tijolos com topo caminhável
 //   escadaria(x, degraus, sobe)       degraus de 16 px que se sobem andando (sobe=false: escadaria que desce)
+//   escadaria(x, degraus, sobe, base) a mesma escadaria em cima de uma estrutura de altura "base"
 //   rampa(x1, x2, altura1, altura2)   chão inclinado (subida ou descida)
+//   colina(x, largura, altura)        subida seguida de descida (duas rampas)
 //   escada(x, altura)                 escada de mão do chão até "altura" (W/S para subir e descer)
 //   buraco(x1, x2)                    abismo: cair = morrer (até ~140 px dá para pular; mais que isso, use ponte)
+//   tunel(x1, x2)                     subsolo: corredor escuro com tochas sob um teto de 70 px, a 110 px do chão.
+//                                     Em cima do teto há outro caminho (topo a 180 px): ponha uma escada de mão em x1 - 12
 //   inimigos: [tipo, x, altura]       altura = em cima de qual superfície nasce (0 = chão)
 //   itens: [item, x, altura]          itens deixados pelo caminho (recompensa para quem explora)
 //   npcs: [tipo, x]                   guardia (nível), mercador (loja/IA), ferreiro (melhorias), cavaleiro_errante (conselho/IA)
@@ -24,10 +28,12 @@ const rampa = (x1, x2, altura1, altura2) => ({ x1, x2, y1: CHAO - altura1, y2: C
 // saida: para que lado o cavaleiro dá o passo ao chegar no topo (+1 = a estrutura fica à direita da escada)
 const escada = (x, altura, saida = 1) => ({ x, topo: CHAO - altura, base: CHAO, saida });
 const buraco = (x1, x2) => ({ x1, x2 });
+const colina = (x, largura, altura) => [rampa(x, x + largura / 2, 0, altura), rampa(x + largura / 2, x + largura, altura, 0)];
+const tunel = (x1, x2, altura = 110, espessura = 70) => ({ x1, x2, teto: CHAO - altura, espessura });
 const DEGRAU = 16, LARGURA_DEGRAU = 26;
-function escadaria(x, degraus, sobe = true) {
+function escadaria(x, degraus, sobe = true, base = 0) {
   return Array.from({ length: degraus }, (_, i) =>
-    bloco("degrau", x + i * LARGURA_DEGRAU, LARGURA_DEGRAU, DEGRAU * (sobe ? i + 1 : degraus - i)));
+    bloco("degrau", x + i * LARGURA_DEGRAU, LARGURA_DEGRAU, DEGRAU * (sobe ? i + 1 : degraus - i), base));
 }
 
 export const FASES = {
@@ -41,12 +47,14 @@ export const FASES = {
       planalto(2700, 2830, 160),                                 // torre: só se passa subindo a escada de mão
       planalto(3880, 4200, 72), muro(4620),
     ],
-    rampas: [rampa(1360, 1520, 96, 0), rampa(3700, 3880, 0, 72), rampa(4200, 4360, 72, 0)],
-    escadas: [escada(2688, 160)],
+    rampas: [...colina(240, 220, 50), rampa(1360, 1520, 96, 0), rampa(3700, 3880, 0, 72), rampa(4200, 4360, 72, 0)],
+    tuneis: [tunel(1930, 2190)],                                 // catacumba: por baixo, no escuro, ou por cima do teto
+    escadas: [escada(1918, 180), escada(2688, 160)],
     buracos: [buraco(1750, 1870), buraco(3300, 3560)],          // o segundo tem uma ponte por cima
     inimigos: [
       ["guerreiro", 760, 0], ["arqueiro", 1220, 96], ["lanceiro", 1650, 0], ["guerreiro", 2000, 0], ["guerreiro", 2110, 0],
-      ["arqueiro", 2290, 90], ["lanceiro", 3430, 0], ["guerreiro", 3960, 72], ["guerreiro", 4110, 72], ["lanceiro", 4500, 0],
+      ["arqueiro", 2080, 180], ["arqueiro", 2290, 90], ["lanceiro", 3430, 0], ["guerreiro", 3960, 72], ["guerreiro", 4110, 72],
+      ["lanceiro", 4500, 0],
     ],
     itens: [["erva", 1300, 96], ["bomba", 2560, 180], ["resina", 2790, 160]],
     npcs: [["guardia", 3070], ["mercador", 3140], ["ferreiro", 4870], ["cavaleiro_errante", 4950]],
@@ -57,15 +65,21 @@ export const FASES = {
     plataformas: [plataforma(2300, 2490, 90), plataforma(2550, 2720, 180), plataforma(4050, 4330, 0)],
     blocos: [
       muro(600), planalto(1200, 1500, 80),
+      planalto(2840, 2960, 70),                                  // topo do morro antes da fogueira
       ...escadaria(3400, 5), planalto(3530, 3800, 80),
     ],
-    rampas: [rampa(1000, 1200, 0, 80), rampa(1500, 1660, 80, 0), rampa(3800, 3950, 80, 0)],
-    escadas: [],
+    rampas: [
+      ...colina(240, 260, 60), rampa(1000, 1200, 0, 80), rampa(1500, 1660, 80, 0),
+      rampa(2740, 2840, 0, 70), rampa(2960, 3060, 70, 0), rampa(3800, 3950, 80, 0),
+    ],
+    tuneis: [tunel(4380, 4800)],                                 // toca entre as raízes, antes da última fogueira
+    escadas: [escada(4368, 180)],
     buracos: [buraco(1900, 2030), buraco(4050, 4330)],
     inimigos: [
       ["mago_errante", 820, 0], ["diabrete", 1300, 80], ["diabrete", 1420, 80], ["lobo_sombrio", 1760, 0],
-      ["mago_raio", 2160, 0], ["mago_errante", 2400, 90], ["mago_fogo", 2640, 180], ["lanceiro", 2850, 0],
+      ["mago_raio", 2160, 0], ["mago_errante", 2400, 90], ["mago_fogo", 2640, 180], ["lanceiro", 2900, 70],
       ["lobo_sombrio", 3660, 80], ["diabrete", 4190, 0], ["mago_fogo", 4450, 0], ["lobo_sombrio", 4600, 0], ["guerreiro", 4720, 0],
+      ["arqueiro", 4620, 180],
     ],
     itens: [["bomba", 2700, 180], ["erva", 3750, 80]],
     npcs: [["guardia", 3170], ["mercador", 3240], ["ferreiro", 5020], ["mercador", 5100]],
@@ -79,14 +93,15 @@ export const FASES = {
       ...escadaria(2950, 6), planalto(3106, 3500, 96),
     ],
     rampas: [rampa(3500, 3660, 96, 0)],
-    escadas: [escada(1488, 150)],
+    tuneis: [tunel(4800, 5450)],                                 // catacumbas sob a cripta: longas e escuras
+    escadas: [escada(1488, 150), escada(4788, 180)],
     buracos: [buraco(2050, 2180), buraco(4450, 4720)],
     inimigos: [
       ["guerreiro", 620, 0], ["arqueiro", 790, 90], ["demonio_rubro", 1000, 0], ["mago_fogo", 1320, 0],
       ["archdemon", 1820, 0], ["lanceiro", 1950, 0], ["demonio_rubro", 2300, 0], ["diabrete", 2420, 0],
       ["guerreiro", 3200, 96], ["mago_raio", 3420, 96], ["archdemon", 3800, 0], ["arqueiro", 3990, 90],
       ["mago_fogo", 4230, 180], ["lobo_sombrio", 4580, 0], ["demonio_rubro", 4900, 0], ["guerreiro", 5010, 0],
-      ["lanceiro", 5110, 0], ["archdemon", 5250, 0],
+      ["lanceiro", 5110, 0], ["guerreiro", 5250, 0], ["arqueiro", 5150, 180],
     ],
     itens: [["resina", 1600, 150], ["bomba", 4250, 180], ["erva", 3300, 96]],
     npcs: [["guardia", 2710], ["mercador", 2780], ["ferreiro", 5670], ["cavaleiro_errante", 5750]],
@@ -102,16 +117,19 @@ export const FASES = {
     blocos: [
       ...escadaria(950, 6), planalto(1106, 1400, 96),
       planalto(2200, 2330, 170),                                 // torre: só se passa pela escada de mão
-      planalto(4460, 4800, 80), coluna(5000),
+      planalto(4460, 4800, 80),                                  // ameias em dois andares: degraus até o andar de cima
+      ...escadaria(4520, 5, true, 80), bloco("torre", 4650, 110, 80, 80),
+      coluna(5000),
     ],
     rampas: [rampa(1400, 1560, 96, 0), rampa(4300, 4460, 0, 80), rampa(4800, 4960, 80, 0)],
+    tuneis: [tunel(2360, 2620)],                                 // porão da torre; do alto da torre, pule para o teto dele
     escadas: [escada(2188, 170)],
     buracos: [buraco(1800, 1920), buraco(3850, 4110)],
     inimigos: [
       ["mago_fogo", 700, 90], ["guerreiro", 880, 0], ["arqueiro", 1250, 96], ["mago_raio", 1340, 96],
       ["demonio_rubro", 1680, 0], ["lanceiro", 2050, 0], ["mago_fogo", 2265, 170], ["diabrete", 2500, 0],
-      ["mago_errante", 3140, 90], ["mago_fogo", 3380, 180], ["guerreiro", 3620, 90], ["lanceiro", 3980, 0],
-      ["mago_raio", 4600, 80], ["guerreiro", 4720, 80], ["demonio_rubro", 5100, 0],
+      ["arqueiro", 2470, 180], ["mago_errante", 3140, 90], ["mago_fogo", 3380, 180], ["guerreiro", 3620, 90],
+      ["lanceiro", 3980, 0], ["guerreiro", 4240, 0], ["mago_raio", 4705, 160], ["demonio_rubro", 5100, 0],
     ],
     itens: [["erva", 1350, 96], ["bomba", 3400, 180], ["resina", 4550, 80]],
     npcs: [["guardia", 2770], ["mercador", 2840], ["ferreiro", 5320], ["cavaleiro_errante", 5400]],
@@ -127,14 +145,15 @@ export const FASES = {
       planalto(4600, 4900, 90),
     ],
     rampas: [rampa(4400, 4600, 0, 90)],
-    escadas: [escada(3488, 160)],
+    tuneis: [tunel(5420, 5720)],                                 // caverna de lava antes da última fogueira
+    escadas: [escada(3488, 160), escada(5408, 180)],
     buracos: [buraco(1200, 1330), buraco(2000, 2120), buraco(2500, 2800), buraco(4900, 5020), buraco(5250, 5380)],
     inimigos: [
       ["lobo_sombrio", 700, 0], ["demonio_rubro", 1050, 0], ["archdemon", 1450, 0], ["guerreiro", 1800, 96],
       ["arqueiro", 1950, 96], ["diabrete", 2300, 0], ["lobo_sombrio", 2400, 0], ["lanceiro", 2650, 0],
       ["archdemon", 2900, 0], ["demonio_rubro", 3400, 0], ["mago_fogo", 3565, 160], ["arqueiro", 3890, 90],
       ["mago_raio", 4130, 180], ["archdemon", 4300, 0], ["guerreiro", 4700, 90], ["demonio_rubro", 4820, 90],
-      ["lobo_sombrio", 5150, 0], ["archdemon", 5500, 0], ["guerreiro", 5650, 0],
+      ["lobo_sombrio", 5150, 0], ["demonio_rubro", 5500, 0], ["guerreiro", 5650, 0], ["arqueiro", 5580, 180],
     ],
     itens: [["erva", 1900, 96], ["resina", 3600, 160], ["bomba", 4130, 180], ["erva", 4750, 90]],
     npcs: [["guardia", 3170], ["mercador", 3240], ["ferreiro", 5870], ["cavaleiro_errante", 5950]],

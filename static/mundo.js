@@ -4,8 +4,9 @@
 //   rampa:      { x1, y1, x2, y2 }          chão inclinado: subida ou descida (y1 = altura em x1, y2 em x2)
 //   escada:     { x, topo, base }           escada de mão: W/S para subir e descer
 //   buraco:     { x1, x2 }                  abismo: não tem chão (cair = morrer)
+//   tunel:      { x1, x2, teto, espessura } subsolo: corredor escuro sob um teto (bloco "teto"), com tochas
 import { estado, CHAO, H } from "./nucleo.js";
-import { desenharPeca, desenharFatiaPeca, tamanhoPeca } from "./sprites.js";
+import { desenharPeca, desenharFatiaPeca, tamanhoPeca, desenharEfeito, ciclo } from "./sprites.js";
 
 // Quem está no chão "gruda" em superfícies até DEGRAU px acima ou abaixo dos pés:
 // é isso que deixa subir rampas e escadas de degraus andando, e descer sem sair voando.
@@ -167,6 +168,9 @@ export function desenharMundo(ctx) {
     ctx.globalAlpha = 1;
   }
 
+  // Túneis: parede de fundo (atrás de tudo que se move) e tochas
+  for (const t of jogo.tuneis) if (visivel(t.x1, t.x2)) desenharFundoDoTunel(ctx, t, tema, jogo.t);
+
   // Colunas que sustentam as plataformas (atrás das lajes e dos personagens). Pontes sobre abismos não têm.
   const [pw, ph] = tamanhoPeca("pilar");
   for (const p of jogo.plataformas) {
@@ -241,9 +245,10 @@ export function desenharMundo(ctx) {
   // Obstáculos e estruturas
   for (const b of jogo.blocos) {
     if (!visivel(b.x1, b.x2)) continue;
-    if (b.tipo === "torre" || b.tipo === "degrau") desenharAlvenaria(ctx, b);
+    if (b.tipo === "torre" || b.tipo === "degrau" || b.tipo === "teto") desenharAlvenaria(ctx, b);
     else desenharPeca(ctx, b.tipo === "coluna" ? "pilar_quebrado" : "muro", b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
     tingir(ctx, tema.pedra, () => ctx.rect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1));
+    if (b.tipo === "teto") desenharEstalactites(ctx, b);
   }
 
   // Escadas de mão (madeira)
@@ -252,6 +257,67 @@ export function desenharMundo(ctx) {
     ctx.fillStyle = "#3d2a1a"; ctx.fillRect(e.x - 14, e.topo - 6, 5, e.base - e.topo + 6); ctx.fillRect(e.x + 9, e.topo - 6, 5, e.base - e.topo + 6);
     ctx.fillStyle = "#6b4a2c"; ctx.fillRect(e.x - 13, e.topo - 6, 2, e.base - e.topo + 6); ctx.fillRect(e.x + 10, e.topo - 6, 2, e.base - e.topo + 6);
     for (let y = e.topo + 4; y < e.base; y += 16) { ctx.fillStyle = "#5a3e26"; ctx.fillRect(e.x - 10, y, 20, 4); ctx.fillStyle = "#7d5a38"; ctx.fillRect(e.x - 10, y, 20, 1); }
+  }
+}
+
+// ===================== Túneis (subsolo) =====================
+const tochas = (t) => {
+  const lista = [];
+  for (let x = t.x1 + 90; x < t.x2 - 40; x += 240) lista.push(x);
+  return lista;
+};
+
+// Parede de tijolos escurecida e tochas presas nela
+function desenharFundoDoTunel(ctx, t, tema, tempo) {
+  const [tw, th] = tamanhoPeca("tijolos"), w = t.x2 - t.x1, h = CHAO - t.teto + 10;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(t.x1, t.teto, w, h); ctx.clip();
+  for (let y = t.teto; y < CHAO + 10; y += th * ESCALA) {
+    for (let x = t.x1 - ((y / 7) % 2) * 30; x < t.x2; x += tw * ESCALA) desenharPeca(ctx, "tijolos", x, y, tw * ESCALA, th * ESCALA);
+  }
+  tingir(ctx, tema.pedra, () => ctx.rect(t.x1, t.teto, w, h));
+  ctx.fillStyle = "rgba(4,3,6,0.6)"; ctx.fillRect(t.x1, t.teto, w, h);
+  ctx.restore();
+  for (const x of tochas(t)) {
+    const y = t.teto + 38;
+    ctx.fillStyle = "#2a1c12"; ctx.fillRect(x - 2, y, 4, 16);   // cabo
+    ctx.fillStyle = "#5a3e26"; ctx.fillRect(x - 4, y - 2, 8, 4); // bocal
+    desenharEfeito(ctx, "fogo", ciclo(tempo + x, 10, 6), x, y + 2, 0.22);
+  }
+}
+
+// Pontas de pedra penduradas no teto (posições fixas para cada túnel)
+function desenharEstalactites(ctx, b) {
+  ctx.fillStyle = "rgba(20,16,14,0.9)";
+  ctx.beginPath();
+  for (let x = b.x1 + 12; x < b.x2 - 12; x += 22) {
+    const comprimento = 6 + ((x * 31) % 11);
+    ctx.moveTo(x - 6, b.y2); ctx.lineTo(x, b.y2 + comprimento); ctx.lineTo(x + 6, b.y2);
+  }
+  ctx.fill();
+}
+
+/**
+ * Escuridão dos túneis, por cima dos personagens: só a volta da jogadora e as tochas ficam iluminadas.
+ * Quem está lá dentro aparece aos poucos ao chegar perto.
+ */
+export function desenharEscuridao(ctx) {
+  const jogo = estado.jogo, j = jogo.jogador, cam = jogo.cam;
+  for (const t of jogo.tuneis) {
+    if (t.x2 < cam - 40 || t.x1 > cam + 1000) continue;
+    const w = t.x2 - t.x1, h = CHAO - t.teto + 40;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(t.x1, t.teto, w, h); ctx.clip();
+    const luz = ctx.createRadialGradient(j.x, j.y - 34, 50, j.x, j.y - 34, 300);
+    luz.addColorStop(0, "rgba(0,0,0,0)"); luz.addColorStop(1, "rgba(0,0,0,0.72)");
+    ctx.fillStyle = luz; ctx.fillRect(t.x1, t.teto, w, h);
+    ctx.globalCompositeOperation = "lighter";
+    for (const x of tochas(t)) {
+      const brilho = ctx.createRadialGradient(x, t.teto + 34, 4, x, t.teto + 34, 120);
+      brilho.addColorStop(0, `rgba(255,140,50,${0.22 + 0.04 * Math.sin(jogo.t * 9 + x)})`); brilho.addColorStop(1, "rgba(255,140,50,0)");
+      ctx.fillStyle = brilho; ctx.fillRect(x - 120, t.teto - 86, 240, 240);
+    }
+    ctx.restore();
   }
 }
 

@@ -122,7 +122,8 @@ def sincronizar(usuario_id: int, dados: dict) -> dict:
     (gastos na fase). Almas ganhas também têm um teto por envio.
     """
     p = carregar(usuario_id)
-    ganhas = max(0, min(int(dados.get("almas_ganhas", 0)), 40 * cat.ALMAS_POR_INIMIGO_MAX))
+    teto = 40 * cat.ALMAS_POR_INIMIGO_MAX * (1 + p["ciclo"])  # no Novo Jogo+ há mais inimigos, que pagam mais
+    ganhas = max(0, min(int(dados.get("almas_ganhas", 0)), teto))
     p["almas"] += ganhas
     for item, qtd in (dados.get("encontrados") or {}).items():
         if item in cat.CONSUMIVEIS and not cat.CONSUMIVEIS[item].get("imediato"):
@@ -143,8 +144,11 @@ def sincronizar(usuario_id: int, dados: dict) -> dict:
 
 def recompensa_chefe(usuario_id: int, chefe: str, primeira_vez: bool) -> tuple[dict, list[str]]:
     p = carregar(usuario_id)
-    p["almas"] += cat.ALMAS_CHEFE.get(chefe, 0)
-    ganhos = [f"{cat.ALMAS_CHEFE.get(chefe, 0)} almas"]
+    almas = round(cat.ALMAS_CHEFE.get(chefe, 0) * cat.bonus_ciclo(p["ciclo"]))
+    p["almas"] += almas
+    ganhos = [f"{almas} almas"]
+    if chefe == db.ULTIMO_CHEFE:
+        p["jornada_completa"] = True
     if primeira_vez:
         for chave, arma in cat.ARMAS.items():
             if arma.get("recompensa") == chefe and chave not in p["armas"]:
@@ -154,6 +158,21 @@ def recompensa_chefe(usuario_id: int, chefe: str, primeira_vez: bool) -> tuple[d
             p["frascos_max"] = min(7, p["frascos_max"] + 1)
             ganhos.append("Fragmento de Estus")
     return salvar(usuario_id, p), ganhos
+
+
+def novo_ciclo(usuario_id: int) -> tuple[dict, str]:
+    """Novo Jogo+: depois de vencer o último chefe, a jornada recomeça com inimigos mais fortes.
+
+    O personagem mantém nível, almas, armas e itens; os chefes mantêm o que aprenderam.
+    """
+    p = carregar(usuario_id)
+    if not p["jornada_completa"]:
+        raise ErroDeRegra("Vença o último chefe para começar um novo ciclo.")
+    p["ciclo"] += 1
+    p["jornada_completa"] = False
+    p["almas_perdidas"] = None
+    db.salvar_cena(usuario_id, db.CENAS[0])
+    return salvar(usuario_id, p), f"Ciclo {p['ciclo'] + 1}: os inimigos voltaram mais fortes."
 
 
 def oferecer_desconto(usuario_id: int, item: str, percentual: float, motivo: str) -> tuple[dict, str]:
@@ -182,5 +201,6 @@ def resumo(usuario_id: int) -> dict:
         "frascos": p["frascos_max"],
         "almas_perdidas": p["almas_perdidas"],
         "chefes_vencidos": sorted(db.chefes_vencidos(usuario_id)),
+        "ciclo": p["ciclo"] + 1,
         "desconto_ativo": p["desconto"],
     }

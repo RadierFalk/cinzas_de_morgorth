@@ -15,6 +15,7 @@ CHEFES = {
     "arquimago": "Subiu a minha torre só para queimar? Que desperdício de cinzas.",
     "arquidemonio": "Todas as almas que você colheu desceram até mim. Agora venha você.",
 }
+ULTIMO_CHEFE = CENAS[-1]  # vencê-lo completa a jornada e libera o Novo Jogo+ (próximo ciclo)
 
 # Como um chefe luta quando ainda não aprendeu nada sobre o jogador
 ESTRATEGIA_PADRAO = {

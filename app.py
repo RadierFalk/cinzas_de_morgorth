@@ -340,6 +340,12 @@ def escolher_classe(c: Classe, u: dict = Depends(usuario_logado)):
     return regra(personagem.escolher_classe, u["id"], c.classe)
 
 
+@app.post("/api/ciclo/novo")
+def novo_ciclo(u: dict = Depends(usuario_logado)):
+    """Novo Jogo+: só depois de vencer o último chefe. Volta às Ruínas com inimigos mais fortes."""
+    return regra(personagem.novo_ciclo, u["id"])
+
+
 class Item(BaseModel):
     item: str
 
