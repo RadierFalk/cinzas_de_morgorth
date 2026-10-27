@@ -3,6 +3,8 @@
 > Souls-like 2D no navegador em que **os chefes aprendem com as suas mortes**: agentes de IA analisam como
 > você joga e mudam o jogo entre uma tentativa e outra.
 
+Fluxogramas: [fluxograma_ia.md](fluxograma_ia.md) (imagens prontas para slides em [img/](img/)).
+
 ---
 
 ## 1. Princípio de design: a IA não controla o combate em tempo real
