@@ -315,6 +315,7 @@ class Sincronia(BaseModel):
     encontrados: dict[str, int] = {}
     recuperou: bool = False
     morreu_em: dict | None = None  # {"cena", "x"}
+    tempo: float = 0               # segundos de jogo desde a última sincronização (cronômetro da jornada)
 
 
 @app.post("/api/personagem/sincronizar")
@@ -387,8 +388,11 @@ async def fim_de_luta(chefe: str, log: dict, u: dict = Depends(usuario_logado)):
         raise HTTPException(404, "Chefe desconhecido")
     resultado = "vitoria" if log.get("resultado") == "vitoria" else "morte"
     primeira_vitoria = resultado == "vitoria" and chefe not in db.chefes_vencidos(u["id"])
+    antes = personagem.carregar(u["id"])
+    completou = resultado == "vitoria" and chefe == db.ULTIMO_CHEFE and not antes["jornada_completa"]
     db.salvar_luta(u["id"], chefe, resultado, log)
     recompensas = personagem.recompensa_chefe(u["id"], chefe, primeira_vitoria)[1] if resultado == "vitoria" else []
+    jornada = registrar_tempo(u["id"], antes) if completou else None
     try:
         fala, dica, usadas = await pensar_chefe(u["id"], chefe, log)
         erro = None
@@ -398,7 +402,28 @@ async def fim_de_luta(chefe: str, log: dict, u: dict = Depends(usuario_logado)):
     db.salvar_fala(u["id"], chefe, fala)
     return {"fala": fala, "dica": dica, "ferramentas": usadas, "erro": erro, "recompensas": recompensas,
             "personagem": personagem.carregar(u["id"]), "loja": personagem.estoque_do_jogador(u["id"]),
-            "estrategia": db.estado_boss(u["id"], chefe)["estrategia"], **db.placar(u["id"], chefe)}
+            "estrategia": db.estado_boss(u["id"], chefe)["estrategia"], "jornada": jornada,
+            **db.placar(u["id"], chefe)}
+
+
+def registrar_tempo(usuario_id: int, p: dict) -> dict:
+    """Fim da jornada: salva o tempo do cronômetro e diz se é recorde (pessoal e no ranking do ciclo)."""
+    ciclo, tempo = p["ciclo"], round(p["tempo_jornada"], 1)
+    anterior = db.melhor_tempo(usuario_id, ciclo)
+    db.salvar_recorde(usuario_id, ciclo, p["classe"], tempo)
+    posicao = db.posicao_no_ranking(ciclo, min(tempo, anterior or tempo))  # onde o jogador está (pelo melhor tempo)
+    return {"tempo_s": tempo, "ciclo": ciclo + 1, "recorde_anterior": anterior,
+            "novo_recorde": anterior is None or tempo < anterior, "posicao": posicao,
+            "ranking": db.ranking(ciclo)}
+
+
+@app.get("/api/recordes")
+def recordes(ciclo: int = 1, u: dict = Depends(usuario_logado)):
+    """Ranking de um ciclo (1 = primeira jornada) e os melhores tempos do jogador em cada ciclo."""
+    ciclos = db.ciclos_com_recorde()
+    meus = {c + 1: db.melhor_tempo(u["id"], c) for c in ciclos}
+    return {"ciclo": ciclo, "ciclos": [c + 1 for c in ciclos], "ranking": db.ranking(ciclo - 1),
+            "meus": {c: t for c, t in meus.items() if t is not None}}
 
 
 async def pensar_chefe(usuario_id: int, chefe: str, log: dict) -> tuple[str, str, list[str]]:

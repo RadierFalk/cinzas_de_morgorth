@@ -132,7 +132,9 @@ PERSONAGEM_INICIAL = {
     "desconto": None,                # {"item", "percentual", "motivo"}: dado pelo mercador (IA)
     "ciclo": 0,                      # jornadas completas (Novo Jogo+): inimigos mais fortes e numerosos a cada uma
     "jornada_completa": False,       # venceu o último chefe neste ciclo: pode começar o próximo
+    "tempo_jornada": 0.0,            # cronômetro do ciclo, em segundos de jogo (sem menus, transições nem IA)
 }
+TEMPO_MAX_POR_ENVIO = 3600  # o navegador manda o tempo jogado a cada sincronização; mais que isso é recusado
 
 MELHORIA_MAX = 5
 

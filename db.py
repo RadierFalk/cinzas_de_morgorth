@@ -65,6 +65,10 @@ def iniciar() -> None:
         CREATE TABLE IF NOT EXISTS personagens (
             usuario_id INTEGER PRIMARY KEY, dados TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS recordes (
+            id INTEGER PRIMARY KEY, usuario_id INTEGER NOT NULL, ciclo INTEGER NOT NULL, classe TEXT,
+            tempo_s REAL NOT NULL, criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     migrar(conn)
     conn.close()
@@ -194,6 +198,37 @@ def salvar_personagem(usuario_id: int, dados: dict) -> None:
 def chefes_vencidos(usuario_id: int) -> set[str]:
     return {l["chefe"] for l in executar(
         "SELECT DISTINCT chefe FROM lutas WHERE usuario_id = ? AND resultado = 'vitoria'", (usuario_id,))}
+
+
+# ---------- recordes: tempo para vencer o último chefe (um ranking por ciclo) ----------
+
+def melhor_tempo(usuario_id: int, ciclo: int) -> float | None:
+    linhas = executar("SELECT MIN(tempo_s) AS t FROM recordes WHERE usuario_id = ? AND ciclo = ?", (usuario_id, ciclo))
+    return linhas[0]["t"]
+
+
+def salvar_recorde(usuario_id: int, ciclo: int, classe: str, tempo_s: float) -> None:
+    executar("INSERT INTO recordes (usuario_id, ciclo, classe, tempo_s) VALUES (?, ?, ?, ?)",
+             (usuario_id, ciclo, classe, tempo_s))
+
+
+def ranking(ciclo: int, limite: int = 10) -> list[dict]:
+    """Melhor tempo de cada jogador no ciclo, do mais rápido para o mais lento."""
+    # No SQLite, as colunas soltas junto com MIN() vêm da mesma linha do mínimo (classe e data daquele tempo)
+    return executar("SELECT u.usuario, r.usuario_id, r.classe, MIN(r.tempo_s) AS tempo_s, r.criado_em "
+                    "FROM recordes r JOIN usuarios u ON u.id = r.usuario_id WHERE r.ciclo = ? "
+                    "GROUP BY r.usuario_id ORDER BY tempo_s LIMIT ?", (ciclo, limite))
+
+
+def posicao_no_ranking(ciclo: int, tempo_s: float) -> int:
+    """Em que lugar esse tempo fica entre os melhores tempos de cada jogador (1 = o mais rápido)."""
+    linhas = executar("SELECT COUNT(*) AS n FROM (SELECT MIN(tempo_s) AS t FROM recordes WHERE ciclo = ? "
+                      "GROUP BY usuario_id) WHERE t < ?", (ciclo, tempo_s))
+    return linhas[0]["n"] + 1
+
+
+def ciclos_com_recorde() -> list[int]:
+    return [l["ciclo"] for l in executar("SELECT DISTINCT ciclo FROM recordes ORDER BY ciclo")]
 
 
 # ---------- memória de longo prazo (compartilhada entre os chefes) ----------

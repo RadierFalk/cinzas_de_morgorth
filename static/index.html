@@ -84,6 +84,15 @@
   .classe .desc { font-family: system-ui, sans-serif; font-size: 12px; color: #b8b09c; line-height: 1.4; }
   .classe .atrib { font-family: system-ui, sans-serif; font-size: 11px; color: #8fb8cc; }
   .conselho { font-family: Georgia, serif; font-size: 17px; font-style: italic; color: #efe4c8; border-left: 3px solid var(--ouro); padding-left: 12px; }
+  /* Cronômetro e recordes */
+  .tempo-final { font-size: clamp(26px, 5vw, 40px); color: #e8c45a; margin: 0; letter-spacing: 2px; }
+  .recordes { border-collapse: collapse; font-family: system-ui, sans-serif; font-size: 13px; min-width: min(420px, 100%); }
+  .recordes th { color: #8a8270; font-weight: normal; text-align: left; padding: 4px 10px; border-bottom: 1px solid #3a3528; }
+  .recordes td { padding: 4px 10px; text-align: left; border-bottom: 1px solid #1d1b16; }
+  .recordes td:last-child { font-variant-numeric: tabular-nums; color: #efe4c8; }
+  .recordes tr.eu td { color: var(--ouro); background: rgba(201,162,39,0.08); }
+  .aba-ciclo { padding: 4px 12px; font-size: 13px; }
+  .aba-ciclo.ativa { border-color: var(--ouro); color: var(--ouro); }
 </style>
 </head>
 <body>
@@ -118,7 +127,7 @@
 
 <script type="module">
 import { iniciarLuta, iniciarFase, carregarSprites, carregarSons, nomeDoChefe, pausar, retomar, aplicarPersonagem,
-  relatorioDaCena } from "/static/jogo.js";
+  relatorioDaCena, formatarTempo } from "/static/jogo.js";
 import { tocar, alternarMudo, estaMudo } from "/static/musica.js";
 import { som, liberarAudio, alternarEfeitos, efeitosMudos } from "/static/sons.js";
 import { abrirMenu } from "/static/menu.js";
@@ -187,7 +196,15 @@ async function salvarCena(cena) {
  * Manda ao servidor o que mudou na cena (almas ganhas, itens usados/encontrados, almas recuperadas
  * ou deixadas ao morrer) e recebe o personagem atualizado. O servidor é quem guarda a verdade.
  */
-async function sincronizar(extra = {}) {
+let filaDeSincronia = Promise.resolve();
+function sincronizar(extra = {}) {
+  // Uma de cada vez: duas ao mesmo tempo poderiam se sobrescrever no servidor (almas e tempo perdidos)
+  const vez = filaDeSincronia.then(() => enviarSincronia(extra));
+  filaDeSincronia = vez.catch(() => {});
+  return vez;
+}
+
+async function enviarSincronia(extra) {
   const r = relatorioDaCena();
   if (!r && !extra.morreu_em) return;
   try {
@@ -197,6 +214,11 @@ async function sincronizar(extra = {}) {
     atualizarInfo();
   } catch { /* sem rede: tenta de novo na próxima sincronização */ }
 }
+
+// Durante o jogo, sincroniza a cada 30 s: o tempo do cronômetro (e as almas) não se perdem se a página fechar
+setInterval(() => {
+  if (estado && $("painel").classList.contains("hidden") && $("menu").classList.contains("hidden")) sincronizar();
+}, 30000);
 
 async function recarregarLoja() {
   const e = await api("/api/estado");
@@ -268,10 +290,13 @@ function telaInicial() {
     <p class="titulo-cena">${NOMES[cena].toUpperCase()}</p>
     ${chefe ? `<p class="fala">“${esc(estado.chefes[cena].fala)}”</p>` : ""}
     ${trilha(cena)}
+    <p class="recompensas">⏱ ${formatarTempo(estado.personagem.tempo_jornada || 0)}${estado.personagem.jornada_completa ? " (jornada completa)" : ""}</p>
     <div class="botoes"><button id="acao">${cena === "ruinas" ? "Começar" : "Continuar"}</button>
-      ${estado.personagem.jornada_completa ? botaoNovoCiclo() : ""}<button id="fogueira">🔥 Fogueira</button></div>
+      ${estado.personagem.jornada_completa ? botaoNovoCiclo() : ""}<button id="fogueira">🔥 Fogueira</button>
+      <button id="recordes">🏆 Recordes</button></div>
     ${cena !== "ruinas" ? `<a href="#" id="recomecar">recomeçar a jornada do início</a>` : ""}`, () => jogar(cena));
   if ($("recomecar")) $("recomecar").onclick = async (e) => { e.preventDefault(); await salvarCena("ruinas"); telaInicial(); };
+  $("recordes").onclick = () => { som("clique"); telaRecordes(); };
   ligarNovoCiclo();
 }
 
@@ -361,7 +386,7 @@ async function aoFimDaLuta(chefe, log, x) {
   } else {
     tocar("vitoria");
     som("vitoria");
-    mostrarPainel(`<p class="titulo-cena">A JORNADA TERMINOU</p>` + ganhos + relatorio +
+    mostrarPainel(`<p class="titulo-cena">A JORNADA TERMINOU</p>` + quadroDoTempo(r.jornada) + ganhos + relatorio +
       `<p class="fala">Os guardiões caíram. Mas eles se lembram de você.</p>
       <p class="mudancas">No Novo Jogo+ você mantém nível, almas e equipamento, mas os inimigos voltam com mais vida,
       mais dano e em maior número, e ficam mais fortes a cada ciclo.</p>
@@ -369,6 +394,43 @@ async function aoFimDaLuta(chefe, log, x) {
       () => jogar(chefe));
     ligarNovoCiclo();
   }
+}
+
+// ===================== Cronômetro e recordes =====================
+const NOME_CLASSE = (id) => estado.catalogo.classes[id]?.nome || id || "—";
+
+/** Tabela do ranking; a linha do jogador fica destacada. */
+function tabelaDeRecordes(ranking) {
+  if (!ranking.length) return `<p class="mudancas">Ninguém terminou este ciclo ainda.</p>`;
+  return `<table class="recordes"><tr><th>#</th><th>Jogador</th><th>Classe</th><th>Tempo</th></tr>${ranking.map((l, i) =>
+    `<tr class="${l.usuario === estado.usuario ? "eu" : ""}"><td>${i + 1}</td><td>${esc(l.usuario)}</td>
+      <td>${esc(NOME_CLASSE(l.classe))}</td><td>${formatarTempo(l.tempo_s)}</td></tr>`).join("")}</table>`;
+}
+
+// Fim da jornada: o tempo final, se é recorde e o ranking do ciclo
+function quadroDoTempo(j) {
+  if (!j) return "";
+  const destaque = j.novo_recorde
+    ? (j.recorde_anterior === null ? "Primeiro tempo registrado!" : `NOVO RECORDE! (antes: ${formatarTempo(j.recorde_anterior)})`)
+    : `Seu recorde: ${formatarTempo(j.recorde_anterior)}`;
+  return `<p class="tempo-final">⏱ ${formatarTempo(j.tempo_s)}</p>
+    <p class="recompensas">${destaque} · ${j.posicao}º lugar no ranking do ciclo ${j.ciclo}</p>
+    ${tabelaDeRecordes(j.ranking)}`;
+}
+
+/** Painel de recordes (botão 🏆): ranking de cada ciclo e os melhores tempos do jogador. */
+async function telaRecordes(ciclo = 1) {
+  const r = await api(`/api/recordes?ciclo=${ciclo}`);
+  const abas = (r.ciclos.length ? r.ciclos : [1]).map((c) =>
+    `<button class="aba-ciclo${c === ciclo ? " ativa" : ""}" data-ciclo="${c}">Ciclo ${c}</button>`).join("");
+  const meus = Object.entries(r.meus).map(([c, t]) => `ciclo ${c}: ${formatarTempo(t)}`).join(" · ");
+  mostrarPainel(`<p class="titulo-cena">🏆 RECORDES</p>
+    <p class="mudancas">Tempo de jogo da escolha da classe até derrotar Azrakh. Menus, transições, telas de morte,
+    de vitória e a IA pensando não contam.</p>
+    <div class="botoes">${abas}</div>${tabelaDeRecordes(r.ranking)}
+    <p class="recompensas">${meus ? "Seus melhores: " + meus : "Você ainda não terminou a jornada."}</p>
+    <div class="botoes"><button id="acao">Voltar</button></div>`, telaInicial);
+  for (const b of document.querySelectorAll(".aba-ciclo")) b.onclick = () => { som("clique"); telaRecordes(+b.dataset.ciclo); };
 }
 
 // Mostra em português o que a IA mudou no chefe

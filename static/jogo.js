@@ -43,6 +43,7 @@ function novaCena(modo, cenario, callbacks, contexto) {
     projeteis: [], raios: [], ondas: [], efeitos: [], particulas: [], textos: [], bombas: [], magias: [], itensNoChao: [],
     npcs: [], decoracao: [], fogueiras: [], legenda: null, aviso: null, convite: null,
     personagem: contexto?.personagem, catalogo: contexto?.catalogo, almasGanhas: 0, recuperou: false, encontrados: {},
+    tempoAtivo: 0, tempoEnviado: 0,  // cronômetro: ainda não enviado / enviado e esperando a resposta do servidor
     ...callbacks,
     log: {
       resultado: null, duracao_s: 0, fase_alcancada: 1,
@@ -145,6 +146,7 @@ export function aplicarPersonagem(personagem, catalogo, descansar = false) {
   const jogo = estado.jogo;
   if (!jogo) return;
   jogo.personagem = personagem; jogo.catalogo = catalogo;
+  jogo.tempoEnviado = 0;  // o personagem do servidor já inclui o tempo enviado
   configurarJogadora(jogo.jogador, personagem, catalogo, descansar);
 }
 
@@ -153,9 +155,31 @@ export function relatorioDaCena() {
   const jogo = estado.jogo;
   if (!jogo) return null;
   const r = { almas_ganhas: jogo.almasGanhas, consumiveis: { ...(jogo.personagem?.consumiveis || {}) },
-    recuperou: jogo.recuperou, encontrados: { ...jogo.encontrados } };
+    recuperou: jogo.recuperou, encontrados: { ...jogo.encontrados }, tempo: Math.round(jogo.tempoAtivo * 1000) / 1000 };
   jogo.almasGanhas = 0; jogo.recuperou = false; jogo.encontrados = {};
+  jogo.tempoEnviado += jogo.tempoAtivo; jogo.tempoAtivo = 0;
   return r;
+}
+
+// ===================== Cronômetro da jornada =====================
+// Conta só com o jogo rolando: não conta em menus (o jogo fica pausado), na entrada da cena (tela escurecida),
+// atravessando a névoa, nas telas de morte e de vitória (jogo.fim) nem entre as cenas (painéis e IA pensando).
+// Para no golpe que derruba o último chefe; volta a zero no Novo Jogo+.
+const cronometroCorre = (jogo) => jogo.personagem?.classe && !jogo.personagem.jornada_completa &&
+  !jogo.pausado && !jogo.fim && !jogo.saida && jogo.fade <= 0;
+
+/** Tempo total da jornada: o que o servidor já guardou + o que ainda está a caminho. */
+export function tempoDaJornada() {
+  const jogo = estado.jogo;
+  return jogo ? (jogo.personagem?.tempo_jornada || 0) + jogo.tempoEnviado + jogo.tempoAtivo : 0;
+}
+
+/** 4523.4 → "1:15:23.4" (ou "15:23.4" com menos de uma hora). */
+export function formatarTempo(s) {
+  const d = Math.round(s * 10);  // arredonda antes de separar: 59,96 s vira "1:00.0", não "0:60.0"
+  const h = Math.floor(d / 36000), m = Math.floor((d % 36000) / 600), seg = (d % 600) / 10;
+  const ss = seg.toFixed(1).padStart(4, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
 function terminar(jogo, resultado) {
@@ -176,6 +200,7 @@ function terminar(jogo, resultado) {
 function atualizar(dt) {
   const jogo = estado.jogo, j = jogo.jogador;
   avancarBuffer(dt);
+  if (cronometroCorre(jogo)) jogo.tempoAtivo += dt;  // antes do hitstop: a pausa do impacto faz parte do jogo
   if (jogo.fade > 0) jogo.fade = Math.max(0, jogo.fade - dt * 1.5);
   if (jogo.hitstop > 0) { jogo.hitstop -= dt; return; }
   jogo.t += dt;
@@ -454,6 +479,7 @@ function desenharHUD(jogo) {
   }
   ctx.shadowBlur = 0;
   desenharControles(jogo);
+  desenharCronometro(jogo);
 
   ctx.textAlign = "center";
   if (b) {
@@ -516,6 +542,18 @@ function linhaDeControles(itens, y) {
     ctx.shadowBlur = 0;
     x += medir(txt) + 14;
   }
+}
+
+// Cronômetro da jornada, abaixo dos controles: branco correndo, cinza parado, dourado com a jornada completa
+function desenharCronometro(jogo) {
+  const p = jogo.personagem;
+  if (!p?.classe) return;
+  const completa = p.jornada_completa, correndo = cronometroCorre(jogo);
+  ctx.save();
+  ctx.textAlign = "right"; ctx.font = "bold 17px Georgia"; ctx.shadowColor = "#000"; ctx.shadowBlur = 4;
+  ctx.fillStyle = completa ? "#e8c45a" : correndo ? "#f3ead6" : "#9a9384";
+  ctx.fillText(`${completa ? "✓ " : ""}⏱ ${formatarTempo(tempoDaJornada())}`, W - 16, 70);
+  ctx.restore();
 }
 
 function desenharControles(jogo) {

@@ -70,7 +70,8 @@ def escolher_classe(usuario_id: int, classe: str) -> tuple[dict, str]:
         raise ErroDeRegra("A classe já foi escolhida.")
     c = cat.CLASSES[classe]
     p.update({"classe": classe, "atributos": dict(c["atributos"]), "arma": c["arma"], "escudo": c["escudo"],
-              "armas": dict(c["armas"]), "escudos": list(c["escudos"]), "consumiveis": dict(c["consumiveis"])})
+              "armas": dict(c["armas"]), "escudos": list(c["escudos"]), "consumiveis": dict(c["consumiveis"]),
+              "tempo_jornada": 0.0})  # o cronômetro começa agora
     return salvar(usuario_id, p), f"Você desperta como {c['nome']}."
 
 
@@ -125,6 +126,10 @@ def sincronizar(usuario_id: int, dados: dict) -> dict:
     teto = 40 * cat.ALMAS_POR_INIMIGO_MAX * (1 + p["ciclo"])  # no Novo Jogo+ há mais inimigos, que pagam mais
     ganhas = max(0, min(int(dados.get("almas_ganhas", 0)), teto))
     p["almas"] += ganhas
+    # Cronômetro: só o tempo de jogo de verdade (o navegador não conta menus, transições nem a IA pensando).
+    # Depois do último chefe, ele para até o próximo ciclo.
+    if not p["jornada_completa"]:
+        p["tempo_jornada"] += max(0.0, min(float(dados.get("tempo", 0)), cat.TEMPO_MAX_POR_ENVIO))
     for item, qtd in (dados.get("encontrados") or {}).items():
         if item in cat.CONSUMIVEIS and not cat.CONSUMIVEIS[item].get("imediato"):
             p["consumiveis"][item] = p["consumiveis"].get(item, 0) + max(0, min(int(qtd), 6))
@@ -171,6 +176,7 @@ def novo_ciclo(usuario_id: int) -> tuple[dict, str]:
     p["ciclo"] += 1
     p["jornada_completa"] = False
     p["almas_perdidas"] = None
+    p["tempo_jornada"] = 0.0  # cada ciclo tem o seu cronômetro (e o seu ranking)
     db.salvar_cena(usuario_id, db.CENAS[0])
     return salvar(usuario_id, p), f"Ciclo {p['ciclo'] + 1}: os inimigos voltaram mais fortes."
 

@@ -91,6 +91,21 @@ fogueiras). O ciclo fica salvo no personagem (`ciclo`, `jornada_completa`), e a 
 começar fica no servidor (`personagem.novo_ciclo`, rota `POST /api/ciclo/novo`). A força de cada ciclo fica em
 `dificuldade()`, no `static/jogo.js`.
 
+### Cronômetro e recordes
+
+O cronômetro (⏱ no canto superior direito) começa depois da escolha da classe e para no golpe que derruba o
+Arquidemônio. Ele **só conta com o jogo rolando**:
+
+- **Não conta** em menus da fogueira e dos NPCs (o jogo fica pausado), na entrada de cada cena (tela clareando),
+  ao atravessar a névoa, nas telas de morte e de vitória, nem nos painéis entre as cenas (inclusive a espera pela IA).
+- O navegador manda o tempo jogado ao servidor a cada sincronização (fogueira, morte, névoa, fim de luta e a cada
+  30 s), e o servidor guarda o total no personagem (`tempo_jornada`). Recarregar a página não zera o cronômetro.
+  Cada envio aceita no máximo 1 h.
+- Ao vencer o último chefe, o tempo vai para a tabela `recordes` do banco, e o jogo mostra se foi **recorde pessoal**
+  e a sua posição no **ranking** (o melhor tempo de cada jogador). Cada ciclo do Novo Jogo+ tem o seu cronômetro e
+  o seu ranking. Vencer o Azrakh de novo no mesmo ciclo não gera outro tempo.
+- O botão **🏆 Recordes** (tela inicial) mostra o ranking de cada ciclo e os seus melhores tempos (`GET /api/recordes`).
+
 ## Controles
 
 As teclas aparecem no HUD: o canto superior direito lista os controles (H esconde ou mostra), e cada ícone
